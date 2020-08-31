@@ -1,2 +1,5 @@
 node_modules/
 adb_proxy/venv/
+.vscode/
+dist/
+yarn-error.log

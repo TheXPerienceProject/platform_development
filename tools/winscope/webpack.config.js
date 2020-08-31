@@ -29,7 +29,7 @@ function getWaylandSafePath() {
 }
 
 module.exports = {
-  entry: './src/main.js',
+  entry: ["@babel/polyfill", './src/main.js'],
   output: {
     path: path.resolve(__dirname, './dist'),
     filename: 'build.js'
@@ -66,12 +66,21 @@ module.exports = {
         options: {
           name: '[name].[ext]?[hash]'
         }
-      }
+      },
+      {
+        test: /\.(ttf|otf|eot|woff|woff2)$/,
+        use: {
+          loader: "file-loader",
+          options: {
+            name: "fonts/[name].[ext]",
+          },
+        },
+      },
     ]
   },
   resolve: {
     alias: {
-        WaylandSafePath: getWaylandSafePath(),
+      WaylandSafePath: getWaylandSafePath(),
     },
     modules: [
       'node_modules',

@@ -14,12 +14,15 @@
  * limitations under the License.
  */
 
+import { DiffType } from './utils/diff.js';
+import intDefMapping from '../../../../prebuilts/misc/common/winscope/intDefMapping.json';
+
 // kind - a type used for categorization of different levels
 // name - name of the node
 // children - list of child entries. Each child entry is pair list [raw object, nested transform function].
 // bounds - used to calculate the full bounds of parents
 // stableId - unique id for an entry. Used to maintain selection across frames.
-function transform({obj, kind, name, children, timestamp, rect, bounds, highlight, rects_transform, chips, visible, flattened, stableId}) {
+function transform({ obj, kind, name, shortName, children, timestamp, rect, bounds, highlight, rects_transform, chips, visible, flattened, stableId }) {
 	function call(fn, arg) {
 		return (typeof fn == 'function') ? fn(arg) : fn;
 	}
@@ -29,7 +32,7 @@ function transform({obj, kind, name, children, timestamp, rect, bounds, highligh
 			var transformFunc = item[1];
 			var childs = call(childrenFunc, obj);
 			if (childs) {
-				if (typeof childs.map != 'function'){
+				if (typeof childs.map != 'function') {
 					throw 'Childs should be an array, but is: ' + (typeof childs) + '.'
 				}
 				return transform ? childs.map(transformFunc) : childs;
@@ -59,14 +62,17 @@ function transform({obj, kind, name, children, timestamp, rect, bounds, highligh
 
 	var kindResolved = call(kind, obj);
 	var nameResolved = call(name, obj);
+	var shortNameResolved = call(shortName, obj);
 	var rectResolved = call(rect, obj);
 	var stableIdResolved = (stableId === undefined) ?
-			kindResolved + '|-|' + nameResolved :
-			call(stableId, obj);
+		kindResolved + '|-|' + nameResolved :
+		call(stableId, obj);
 
 	var result = {
 		kind: kindResolved,
 		name: nameResolved,
+		shortName: shortNameResolved,
+		collapsed: false,
 		children: transformed_children,
 		obj: obj,
 		timestamp: call(timestamp, obj),
@@ -79,8 +85,8 @@ function transform({obj, kind, name, children, timestamp, rect, bounds, highligh
 		stableId: stableIdResolved,
 		visible: call(visible, obj),
 		childrenVisible: transformed_children.some((c) => {
-				return c.childrenVisible || c.visible
-			}),
+			return c.childrenVisible || c.visible
+		}),
 		flattened: call(flattened, obj),
 	};
 
@@ -91,45 +97,222 @@ function transform({obj, kind, name, children, timestamp, rect, bounds, highligh
 	return Object.freeze(result);
 }
 
+function getDiff(val, compareVal) {
+	if (val && isTerminal(compareVal)) {
+		return { type: DiffType.ADDED };
+	} else if (isTerminal(val) && compareVal) {
+		return { type: DiffType.DELETED };
+	} else if (compareVal != val) {
+		return { type: DiffType.MODIFIED };
+	} else {
+		return { type: DiffType.NONE };
+	}
+}
 
-function transform_json(obj, name, options) {
-	let {skip, formatter} = options;
+// Represents termination of the object traversal,
+// differentiated with a null value in the object.
+class Terminal { }
 
-	var children = [];
-	var formatted = undefined;
+function isTerminal(obj) {
+	return obj instanceof Terminal;
+}
 
-	if (skip && skip.includes(obj)) {
-		// skip
-	} else if ((formatted = formatter(obj))) {
-		children.push(transform_json(null, formatted, options));
-	} else if (Array.isArray(obj)) {
-		obj.forEach((e, i) => {
-			children.push(transform_json(e, ""+i, options));
-		})
-	} else if (typeof obj == 'string') {
-		children.push(transform_json(null, obj, options));
-	} else if (typeof obj == 'number' || typeof obj == 'boolean') {
-		children.push(transform_json(null, ""+obj, options));
-	} else if (obj && typeof obj == 'object') {
-		Object.keys(obj).forEach((key) => {
-			children.push(transform_json(obj[key], key, options));
-		});
+class ObjectTransformer {
+	constructor(obj, rootName, stableId) {
+		this.obj = obj;
+		this.rootName = rootName;
+		this.stableId = stableId;
+		this.diff = false;
 	}
 
-	if (children.length == 1 && !children[0].combined) {
-		return Object.freeze({
-			kind: "",
-			name: name + ": " + children[0].name,
-			children: children[0].children,
-			combined: true
-		});
+	setOptions(options) {
+		this.options = options;
+		return this;
 	}
 
-	return Object.freeze({
-		kind: "",
-		name: name,
-		children: children,
-	});
+	withDiff(obj, fieldOptions) {
+		this.diff = true;
+		this.compareWithObj = obj ?? new Terminal();
+		this.compareWithFieldOptions = fieldOptions;
+		return this;
+	}
+
+	transform() {
+		const { formatter } = this.options;
+		if (!formatter) {
+			throw new Error("Missing formatter, please set with setOptions()");
+		}
+
+		return this._transform(this.obj, this.rootName, null,
+			this.compareWithObj, this.rootName, null,
+			this.stableId);
+	}
+
+	_transformObject(obj, fieldOptions) {
+		const { skip, formatter } = this.options;
+		const transformedObj = {
+			obj: {},
+			fieldOptions: {},
+		};
+		let formatted = undefined;
+
+		if (skip && skip.includes(obj)) {
+			// skip
+		} else if ((formatted = formatter(obj))) {
+			// Obj has been formatted into a terminal node — has no children.
+			transformedObj.obj[formatted] = new Terminal();
+			transformedObj.fieldOptions[formatted] = fieldOptions;
+		} else if (Array.isArray(obj)) {
+			obj.forEach((e, i) => {
+				transformedObj.obj["" + i] = e;
+				transformedObj.fieldOptions["" + i] = fieldOptions;
+			});
+		} else if (typeof obj == 'string') {
+			// Object is a primitive type — has no children. Set to terminal
+			// to differentiate between null object and Terminal element.
+			transformedObj.obj[obj] = new Terminal();
+			transformedObj.fieldOptions[obj] = fieldOptions;
+		} else if (typeof obj == 'number' || typeof obj == 'boolean') {
+			// Similar to above — primitive type node has no children.
+			transformedObj.obj["" + obj] = new Terminal();
+			transformedObj.fieldOptions["" + obj] = fieldOptions;
+		} else if (obj && typeof obj == 'object') {
+			Object.keys(obj).forEach((key) => {
+				transformedObj.obj[key] = obj[key];
+				transformedObj.fieldOptions[key] = obj.$type?.fields[key]?.options;
+			});
+		} else if (obj === null) {
+			// Null object is a has no children — set to be terminal node.
+			transformedObj.obj.null = new Terminal();
+			transformedObj.fieldOptions.null = undefined;
+		}
+
+		return transformedObj;
+	}
+
+	_transform(obj, name, fieldOptions,
+		compareWithObj, compareWithName, compareWithFieldOptions,
+		stableId) {
+		const children = [];
+
+		if (!isTerminal(obj)) {
+			const transformedObj = this._transformObject(obj, fieldOptions);
+			obj = transformedObj.obj;
+			fieldOptions = transformedObj.fieldOptions;
+		}
+		if (!isTerminal(compareWithObj)) {
+			const transformedObj = this._transformObject(compareWithObj, compareWithFieldOptions);
+			compareWithObj = transformedObj.obj;
+			compareWithFieldOptions = transformedObj.fieldOptions;
+		}
+
+		for (const key in obj) {
+			if (obj.hasOwnProperty(key)) {
+				let compareWithChild = new Terminal();
+				let compareWithChildName = new Terminal();
+				let compareWithChildFieldOptions = undefined;
+				if (compareWithObj.hasOwnProperty(key)) {
+					compareWithChild = compareWithObj[key];
+					compareWithChildName = key;
+					compareWithChildFieldOptions = compareWithFieldOptions[key];
+				}
+				children.push(this._transform(obj[key], key, fieldOptions[key],
+					compareWithChild, compareWithChildName, compareWithChildFieldOptions,
+					`${stableId}.${key}`));
+			}
+		}
+
+		// Takes care of adding deleted items to final tree
+		for (const key in compareWithObj) {
+			if (!obj.hasOwnProperty(key) && compareWithObj.hasOwnProperty(key)) {
+				children.push(this._transform(new Terminal(), new Terminal(), undefined,
+					compareWithObj[key], key, compareWithFieldOptions[key], `${stableId}.${key}`));
+			}
+		}
+
+		let transformedObj;
+		if (
+			children.length == 1 &&
+			children[0].children.length == 0 &&
+			!children[0].combined
+		) {
+			// Merge leaf key value pairs.
+			const child = children[0];
+
+			transformedObj = {
+				kind: "",
+				name: name + ": " + child.name,
+				stableId,
+				children: child.children,
+				combined: true,
+			}
+
+			if (this.diff) {
+				transformedObj.diff = child.diff;
+			}
+		} else {
+			transformedObj = {
+				kind: "",
+				name,
+				stableId,
+				children,
+			};
+
+			let fieldOptionsToUse = fieldOptions;
+
+			if (this.diff) {
+				const diff = getDiff(name, compareWithName);
+				transformedObj.diff = diff;
+
+				if (diff.type == DiffType.DELETED) {
+					transformedObj.name = compareWithName;
+					fieldOptionsToUse = compareWithFieldOptions;
+				}
+			}
+
+			const annotationType = fieldOptionsToUse?.["(.android.typedef)"];
+			if (annotationType) {
+				if (intDefMapping[annotationType] === undefined) {
+					console.error(`Missing intDef mapping for translation for ${annotationType}`);
+				} else if (intDefMapping[annotationType].flag) {
+					transformedObj.name = `${getIntFlagsAsStrings(transformedObj.name, annotationType)} (${transformedObj.name})`;
+				} else {
+					transformedObj.name = `${intDefMapping[annotationType].values[transformedObj.name]} (${transformedObj.name})`;
+				}
+			}
+		}
+
+		return Object.freeze(transformedObj);
+	}
+}
+
+function getIntFlagsAsStrings(intFlags, annotationType) {
+	const flags = [];
+
+	const mapping = intDefMapping[annotationType].values;
+
+	// Will only contain bits that have not been associated with a flag.
+	let leftOver = intFlags;
+
+	for (const intValue in mapping) {
+		if ((intFlags & parseInt(intValue)) === parseInt(intValue)) {
+			flags.push(mapping[intValue]);
+
+			leftOver = leftOver & ~intValue;
+		}
+	}
+
+	if (flags.length === 0) {
+		console.error("No valid flag mappings found for ", intFlags, "of type", annotationType);
+	}
+
+	if (leftOver) {
+		// If 0 is a valid flag value that isn't in the intDefMapping
+		// it will be ignored
+		flags.push(leftOver);
+	}
+
+	return flags.join(' | ');
 }
 
 function nanos_to_string(elapsedRealtimeNanos) {
@@ -155,9 +338,9 @@ function nanos_to_string(elapsedRealtimeNanos) {
 	return parts.reverse().join('');
 }
 
- // Returns a UI element used highlight a visible entry.
- function get_visible_chip() {
-	return {short: 'V', long: "visible", class: 'default'};
- }
+// Returns a UI element used highlight a visible entry.
+function get_visible_chip() {
+	return { short: 'V', long: "visible", class: 'default' };
+}
 
-export {transform, transform_json, nanos_to_string, get_visible_chip};
+export { transform, ObjectTransformer, nanos_to_string, get_visible_chip };

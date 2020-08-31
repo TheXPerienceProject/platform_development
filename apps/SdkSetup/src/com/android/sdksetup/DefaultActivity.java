@@ -69,6 +69,9 @@ public class DefaultActivity extends Activity {
 
             Settings.Global.putInt(getContentResolver(), Settings.Global.ADB_ENABLED, 1);
 
+            // Disable offload wifi tethering
+            Settings.Global.putInt(getContentResolver(), Settings.Global.TETHER_OFFLOAD_DISABLED, 1);
+
             TelephonyManager mTelephony = getApplicationContext().getSystemService(TelephonyManager.class);
             mTelephony.setPreferredNetworkTypeBitmask(TelephonyManager.NETWORK_TYPE_BITMASK_NR);
         }
