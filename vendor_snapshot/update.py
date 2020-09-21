@@ -183,7 +183,7 @@ def gen_bp_module(variation, name, version, target_arch, arch_props, bp_dir):
         # Record stem for executable binary snapshots.
         # We don't check existence of 'src'; src must exist for executables
         if variation == 'binary':
-            if '64' in arch: # arm64, x86_64
+            if '64' in arch:  # arm64, x86_64
                 stem64 = os.path.basename(arch_props[arch]['src'])
             else:
                 stem32 = os.path.basename(arch_props[arch]['src'])

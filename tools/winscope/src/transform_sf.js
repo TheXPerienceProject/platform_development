@@ -94,7 +94,7 @@ function transform_layer(layer) {
   const simplifiedLayerName = getSimplifiedLayerName(layer.name);
   const shortName = simplifiedLayerName ? layer.id + ": " + simplifiedLayerName : undefined;
 
-  return transform({
+  const transformedLayer = transform({
     obj: layer,
     kind: '',
     name: layer.id + ": " + layer.name,
@@ -106,6 +106,16 @@ function transform_layer(layer) {
     chips,
     visible: layer.visible,
   });
+
+  // NOTE: Temporary until refactored to use flickerlib
+  return {
+    ...transformedLayer, ...{
+      invisibleDueTo: layer.invisibleDueTo,
+      occludedBy: layer.occludedBy,
+      partiallyOccludedBy: layer.partiallyOccludedBy,
+      coveredBy: layer.coveredBy
+    }
+  };
 }
 
 function missingLayer(childId) {
@@ -135,7 +145,8 @@ function transform_layers(includesCompositionState, layers) {
         isChild[childId] = true;
       });
     }
-    if ((e.zOrderRelativeOf || -1) !== -1) {
+    // We don't clean up relatives when the relative parent is removed, so it may be inconsistent
+    if ((e.zOrderRelativeOf || -1) !== -1 && (idToItem[e.zOrderRelativeOf])) {
       idToItem[e.zOrderRelativeOf].zOrderRelativeParentOf = e.id;
     }
   });
