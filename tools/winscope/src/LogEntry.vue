@@ -1,5 +1,14 @@
 <template>
-  <div class="entry" :class="[{inactive: !source.occured}, source.level.toLowerCase()]">
+  <div
+    class="entry"
+    :class="[
+      {
+        'inactive': !source.occured,
+        'just-inactivated': source.justInactivated,
+      },
+      source.level.toLowerCase()
+    ]"
+  >
     <div class="level-column">
       <div>
         <div class="icon" v-if="source.level.toLowerCase() === 'verbose'">
@@ -31,22 +40,26 @@
 </template>
 
 <script>
-import { logLevel } from './utils/consts';
+import {logLevel} from './utils/consts';
 
 export default {
   name: 'logentry',
   props: {
     index: {
-      type: Number
+      type: Number,
     },
     source: {
       type: Object,
-      default () {
-        return {}
-      }
-    }
+      default() {
+        return {};
+      },
+    },
   },
   data() {
+    if (!this.source?.level) {
+      console.log(this.source);
+    }
+
     return {
       levelIcons: {
         [logLevel.INFO]: 'info_outline',
@@ -55,15 +68,15 @@ export default {
         [logLevel.WARN]: 'warning',
         [logLevel.ERROR]: 'error',
         [logLevel.WTF]: 'bolt',
-      }
+      },
     };
   },
   methods: {
     setTimelineTime(timestamp) {
       this.$store.dispatch('updateTimelineTime', timestamp);
-    }
+    },
   },
-}
+};
 </script>
 <style scoped>
 .level-column {
@@ -124,6 +137,10 @@ a {
 
 .inactive a {
   color: gray;
+}
+
+.just-inactivated {
+  background: #dee2e3;
 }
 
 .new-badge {

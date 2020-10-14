@@ -27,55 +27,56 @@
       @click="clicked"
       ref="node"
     >
-      <button class="toggle-tree-btn" @click="toggleTree" v-if="!isLeaf" v-on:click.stop>
+      <button
+        class="toggle-tree-btn"
+        @click="toggleTree"
+        v-if="!isLeaf"
+        v-on:click.stop
+      >
         <i aria-hidden="true" class="md-icon md-theme-default material-icons">
           {{isCollapsed ? "chevron_right" : "expand_more"}}
         </i>
       </button>
-      <div class="padding" v-else>
-        <i aria-hidden="true" class="md-icon md-theme-default material-icons">
-          arrow_right
-        </i>
+      <div class="leaf-node-icon-wrapper" v-else>
+        <i class="leaf-node-icon"/>
       </div>
       <div class="description">
-        <span class="kind">{{item.kind}}</span>
-        <span v-if="item.kind && item.name">-</span>
-        <span>
-          <span v-if="simplifyNames && item.shortName && item.shortName !== item.name">
-            {{ item.shortName }}
-            <md-tooltip
-              md-delay="300"
-              md-direction="top"
-              style="margin-bottom: -10px"
-            >
-              {{item.name}}
-            </md-tooltip>
-          </span>
-          <span v-else>
-            {{ item.name }}
-          </span>
-        </span>
-        <div
-          v-for="c in item.chips"
-          v-bind:key="c.long"
-          :title="c.long"
-          :class="chipClassForChip(c)"
-        >
-          {{c.short}}
+        <div v-if="elementView">
+          <component
+            :is="elementView"
+            :item="item"
+            :simplify-names="simplifyNames"
+          />
+        </div>
+        <div v-else>
+          <DefaultTreeElement :item="item" :simplify-names="simplifyNames"/>
         </div>
       </div>
       <div v-show="isCollapsed">
         <button
           class="expand-tree-btn"
-          :class="[{ 'child-selected': isCollapsed && childIsSelected }, collapseDiffClass]"
+          :class="[{
+            'child-selected': isCollapsed && childIsSelected
+            }, collapseDiffClass]"
           v-if="children"
           @click="expandTree"
           v-on:click.stop
         >
-          <i aria-hidden="true" class="md-icon md-theme-default material-icons">more_horiz</i>
+          <i
+            aria-hidden="true"
+            class="md-icon md-theme-default material-icons"
+          >
+            more_horiz
+          </i>
         </button>
       </div>
     </div>
+
+    <node-context-menu
+      ref="nodeContextMenu"
+      v-on:collapseAllOtherNodes="collapseAllOtherNodes"
+    />
+
     <div class="children" v-if="children" v-show="!isCollapsed">
       <tree-view
         v-for="(c,i) in children"
@@ -83,7 +84,6 @@
         @item-selected="childItemSelected"
         :selected="selected"
         :key="i"
-        :chip-class="chipClass"
         :filter="childFilter(c)"
         :flattened="flattened"
         :simplify-names="simplifyNames"
@@ -98,6 +98,10 @@
         v-on:hoverEnd="childHover = false"
         v-on:selected="immediateChildSelected = true"
         v-on:unselected="immediateChildSelected = false"
+        :elementView="elementView"
+        v-on:collapseSibbling="collapseSibbling"
+        v-on:collapseAllOtherNodes="collapseAllOtherNodes"
+        v-on:closeAllContextMenus="closeAllContextMenus"
         ref="children"
       />
     </div>
@@ -105,35 +109,27 @@
 </template>
 
 <script>
-import jsonProtoDefs from "frameworks/base/core/proto/android/server/windowmanagertrace.proto";
-import protobuf from "protobufjs";
+import DefaultTreeElement from './DefaultTreeElement.vue';
+import NodeContextMenu from './NodeContextMenu.vue';
 
-import { DiffType } from "./utils/diff.js";
+import {DiffType} from './utils/diff.js';
 
-var protoDefs = protobuf.Root.fromJSON(jsonProtoDefs);
-var TraceMessage = protoDefs.lookupType(
-  "com.android.server.wm.WindowManagerTraceFileProto"
-);
-var ServiceMessage = protoDefs.lookupType(
-  "com.android.server.wm.WindowManagerServiceDumpProto"
-);
-
-const levelOffset = 24; /* in px, must be kept in sync with css, maybe find a better solution... */
+/* in px, must be kept in sync with css, maybe find a better solution... */
+const levelOffset = 24;
 
 export default {
-  name: "tree-view",
+  name: 'tree-view',
   props: [
-    "item",
-    "selected",
-    "chipClass",
-    "filter",
-    "simplify-names",
-    "flattened",
-    "force-flattened",
-    "items-clickable",
-    "initial-depth",
-    "collapse",
-    "collapseChildren",
+    'item',
+    'selected',
+    'filter',
+    'simplify-names',
+    'flattened',
+    'force-flattened',
+    'items-clickable',
+    'initial-depth',
+    'collapse',
+    'collapseChildren',
     // Allows collapse state to be tracked by Vuex so that collapse state of
     // items with same stableId can remain consisten accross time and easily
     // toggled from anywhere in the app.
@@ -141,7 +137,9 @@ export default {
     // trees throughout the component's lifetime to make sure same nodes are
     // toggled when switching back and forth between trees.
     // If true, requires all nodes in tree to have a stableId.
-    "useGlobalCollapsedState",
+    'useGlobalCollapsedState',
+    // Custom view to use to render the elements in the tree view
+    'elementView',
   ],
   data() {
     const isCollapsedByDefault = this.collapse ?? false;
@@ -156,11 +154,11 @@ export default {
       nodeHover: false,
       childHover: false,
       diffSymbol: {
-        [DiffType.NONE]: "",
-        [DiffType.ADDED]: "+",
-        [DiffType.DELETED]: "-",
-        [DiffType.MODIFIED]: ".",
-        [DiffType.MOVED]: ".",
+        [DiffType.NONE]: '',
+        [DiffType.ADDED]: '+',
+        [DiffType.DELETED]: '-',
+        [DiffType.MODIFIED]: '.',
+        [DiffType.MOVED]: '.',
       },
     };
   },
@@ -186,7 +184,7 @@ export default {
       } else {
         this.$emit('unselected');
       }
-    }
+    },
   },
   methods: {
     setCollapseValue(isCollapsed) {
@@ -223,7 +221,7 @@ export default {
       // Travers children trees recursively in reverse to find currently
       // selected item and select the next visible one
       if (this.$refs.children) {
-        for (var c of this.$refs.children) {
+        for (const c of this.$refs.children) {
           found = c.selectNext(found, inCollapsedTree);
         }
       }
@@ -231,7 +229,8 @@ export default {
       return found;
     },
     selectPrev(found, inCollapsedTree) {
-      // Set inCollapseTree flag to make sure elements in collapsed trees are not selected.
+      // Set inCollapseTree flag to make sure elements in collapsed trees are
+      // not selected.
       const isRootCollapse = !inCollapsedTree && this.isCollapsed;
       if (isRootCollapse) {
         inCollapsedTree = true;
@@ -240,7 +239,7 @@ export default {
       // Travers children trees recursively in reverse to find currently
       // selected item and select the previous visible one
       if (this.$refs.children) {
-        for (var c of [...this.$refs.children].reverse()) {
+        for (const c of [...this.$refs.children].reverse()) {
           found = c.selectPrev(found, inCollapsedTree);
         }
       }
@@ -265,13 +264,13 @@ export default {
     },
     childItemSelected(item) {
       this.isChildSelected = true;
-      this.$emit("item-selected", item);
+      this.$emit('item-selected', item);
     },
     select() {
       this.$emit('item-selected', this.item);
     },
     clicked(e) {
-      if (window.getSelection().type === "range") {
+      if (window.getSelection().type === 'range') {
         // Ignore click if is selection
         return;
       }
@@ -283,18 +282,11 @@ export default {
         this.select();
       }
     },
-    chipClassForChip(c) {
-      return [
-        "tree-view-internal-chip",
-        this.chipClassOrDefault,
-        this.chipClassOrDefault + "-" + (c.class || "default")
-      ];
-    },
     filterMatches(c) {
-      // If a filter is set, consider the item matches if the current item or any of its
-      // children matches.
+      // If a filter is set, consider the item matches if the current item or
+      // any of its children matches.
       if (this.filter) {
-        var thisMatches = this.filter(c);
+        const thisMatches = this.filter(c);
         const childMatches = (child) => this.filterMatches(child);
         return thisMatches || (!this.applyingFlattened &&
             c.children && c.children.some(childMatches));
@@ -314,11 +306,11 @@ export default {
       return this.selected === this.item;
     },
     updateCollapsedDiffClass() {
-        // NOTE: Could be memoized in $store map like collapsed state if
-        // performance ever becomes a problem.
-        if (this.item) {
-          this.collapseDiffClass = this.computeCollapseDiffClass();
-        }
+      // NOTE: Could be memoized in $store map like collapsed state if
+      // performance ever becomes a problem.
+      if (this.item) {
+        this.collapseDiffClass = this.computeCollapseDiffClass();
+      }
     },
     getAllDiffTypesOfChildren(item) {
       if (!item.children) {
@@ -339,7 +331,7 @@ export default {
     },
     computeCollapseDiffClass() {
       if (!this.isCollapsed) {
-        return "";
+        return '';
       }
 
       const childrenDiffClasses = this.getAllDiffTypesOfChildren(this.item);
@@ -348,7 +340,7 @@ export default {
       childrenDiffClasses.delete(undefined);
 
       if (childrenDiffClasses.size === 0) {
-        return "";
+        return '';
       }
       if (childrenDiffClasses.size === 1) {
         const diff = childrenDiffClasses.values().next().value;
@@ -356,6 +348,57 @@ export default {
       }
 
       return DiffType.MODIFIED;
+    },
+    collapseAllOtherNodes() {
+      this.$emit('collapseAllOtherNodes');
+      this.$emit('collapseSibbling', this.item);
+    },
+    collapseSibbling(item) {
+      if (!this.$refs.children) {
+        return;
+      }
+
+      for (const child of this.$refs.children) {
+        if (child.item === item) {
+          continue;
+        }
+
+        child.collapseAll();
+      }
+    },
+    collapseAll() {
+      this.setCollapseValue(true);
+
+      if (!this.$refs.children) {
+        return;
+      }
+
+      for (const child of this.$refs.children) {
+        child.collapseAll();
+      }
+    },
+    openContextMenu() {
+      this.closeAllContextMenus();
+      this.$refs.nodeContextMenu.open();
+    },
+    closeAllContextMenus(requestOrigin) {
+      this.$refs.nodeContextMenu.close();
+      this.$emit('closeAllContextMenus', this.item);
+      this.closeAllChildrenContextMenus(requestOrigin);
+    },
+    closeAllChildrenContextMenus(requestOrigin) {
+      if (!this.$refs.children) {
+        return;
+      }
+
+      for (const child of this.$refs.children) {
+        if (child.item === requestOrigin) {
+          continue;
+        }
+
+        child.$refs.nodeContextMenu.close();
+        child.closeAllChildrenContextMenus();
+      }
     },
   },
   computed: {
@@ -395,10 +438,7 @@ export default {
       return false;
     },
     diffClass() {
-      return this.item.diff ? this.item.diff.type : ''
-    },
-    chipClassOrDefault() {
-      return this.chipClass || "tree-view-chip";
+      return this.item.diff ? this.item.diff.type : '';
     },
     applyingFlattened() {
       return (this.flattened && this.item.flattened) || this.forceFlattened;
@@ -421,7 +461,7 @@ export default {
       return {
         marginLeft: '-' + offest,
         paddingLeft: offest,
-      }
+      };
     },
   },
   mounted() {
@@ -434,26 +474,36 @@ export default {
 
       return true;
     };
-    this.$refs.node?.addEventListener('mousedown', this.nodeMouseDownEventListner);
+    this.$refs.node?.addEventListener('mousedown',
+        this.nodeMouseDownEventListner);
 
     this.updateCollapsedDiffClass();
 
-    this.nodeMouseEnterEventListener = e => {
+    this.nodeMouseEnterEventListener = (e) => {
       this.nodeHover = true;
       this.$emit('hoverStart');
     };
-    this.$refs.node?.addEventListener('mouseenter', this.nodeMouseEnterEventListener);
+    this.$refs.node?.addEventListener('mouseenter',
+        this.nodeMouseEnterEventListener);
 
-    this.nodeMouseLeaveEventListener = e => {
+    this.nodeMouseLeaveEventListener = (e) => {
       this.nodeHover = false;
       this.$emit('hoverEnd');
     };
-    this.$refs.node?.addEventListener('mouseleave', this.nodeMouseLeaveEventListener);
+    this.$refs.node?.addEventListener('mouseleave',
+        this.nodeMouseLeaveEventListener);
   },
   beforeDestroy() {
-    this.$refs.node?.removeEventListener('mousedown', this.nodeMouseDownEventListner);
-    this.$refs.node?.removeEventListener('mouseenter', this.nodeMouseEnterEventListener);
-    this.$refs.node?.removeEventListener('mouseleave', this.nodeMouseLeaveEventListener);
+    this.$refs.node?.removeEventListener('mousedown',
+        this.nodeMouseDownEventListner);
+    this.$refs.node?.removeEventListener('mouseenter',
+        this.nodeMouseEnterEventListener);
+    this.$refs.node?.removeEventListener('mouseleave',
+        this.nodeMouseLeaveEventListener);
+  },
+  components: {
+    DefaultTreeElement,
+    NodeContextMenu,
   },
 };
 </script>
@@ -551,37 +601,6 @@ export default {
   color: #e9e9e9;
 }
 
-.tree-view-internal-chip {
-  display: inline-block;
-}
-
-.tree-view-chip {
-  padding: 0 10px;
-  border-radius: 10px;
-  background-color: #aaa;
-  color: black;
-}
-
-.tree-view-chip.tree-view-chip-warn {
-  background-color: #ffaa6b;
-  color: black;
-}
-
-.tree-view-chip.tree-view-chip-error {
-  background-color: #ff6b6b;
-  color: black;
-}
-
-.tree-view-chip.tree-view-chip-gpu {
-  background-color: #00c853;
-  color: black;
-}
-
-.tree-view-chip.tree-view-chip-hwc {
-  background-color: #448aff;
-  color: black;
-}
-
 .toggle-tree-btn, .expand-tree-btn {
   background: none;
   color: inherit;
@@ -600,8 +619,33 @@ export default {
   color: #3f51b5;
 }
 
-.description span {
-  white-space: normal;
+.description {
+  display: flex;
+  flex: 1 1 auto;
+}
+
+.description > div {
+  display: flex;
+  flex: 1 1 auto;
+}
+
+.leaf-node-icon-wrapper {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-content: center;
+  align-items: center;
+  justify-content: center;
+}
+
+.leaf-node-icon {
+  content: "";
+  display: inline-block;
+  height: 5px;
+  width: 5px;
+  margin-top: -2px;
+  border-radius: 50%;
+  background-color: #9b9b9b;
 }
 
 </style>
