@@ -21,18 +21,18 @@ import jsonProtoDefsWm from 'frameworks/base/core/proto/android/server/windowman
 import jsonProtoDefsProtoLog from 'frameworks/base/core/proto/android/internal/protolog.proto';
 import jsonProtoDefsSf from 'frameworks/native/services/surfaceflinger/layerproto/layerstrace.proto';
 import jsonProtoDefsTransaction from 'frameworks/native/cmds/surfacereplayer/proto/src/trace.proto';
-import jsonProtoDefsTransactionEvents from 'frameworks/native/libs/gui/proto/transactions.proto';
 import jsonProtoDefsWl from 'WaylandSafePath/waylandtrace.proto';
 import jsonProtoDefsSysUi from 'frameworks/base/packages/SystemUI/src/com/android/systemui/tracing/sysui_trace.proto';
 import jsonProtoDefsLauncher from 'packages/apps/Launcher3/protos/launcher_trace_file.proto';
+import jsonProtoDefsIme from 'frameworks/base/core/proto/android/view/inputmethod/inputmethodeditortrace.proto';
 import protobuf from 'protobufjs';
-import {transform_layers, transform_layers_trace} from './transform_sf.js';
-import {transform_window_service, transform_window_trace} from './transform_wm.js';
-import {transform_transaction_trace, transform_TRANSACTION_EVENTS_TRACE} from './transform_transaction.js';
+import {transformLayers, transformLayersTrace} from './transform_sf.js';
+import {transform_transaction_trace} from './transform_transaction.js';
 import {transform_wl_outputstate, transform_wayland_trace} from './transform_wl.js';
 import {transformProtolog} from './transform_protolog.js';
 import {transform_sysui_trace} from './transform_sys_ui.js';
 import {transform_launcher_trace} from './transform_launcher.js';
+import {transform_ime_trace} from './transform_ime.js';
 import {fill_transform_data} from './matrix_utils.js';
 import {mp4Decoder} from './decodeVideo.js';
 
@@ -44,6 +44,7 @@ import WaylandTrace from '@/traces/Wayland.ts';
 import ProtoLogTrace from '@/traces/ProtoLog.ts';
 import SystemUITrace from '@/traces/SystemUI.ts';
 import LauncherTrace from '@/traces/Launcher.ts';
+import ImeTrace from '@/traces/InputMethodEditor.ts';
 
 import SurfaceFlingerDump from '@/dumps/SurfaceFlinger.ts';
 import WindowManagerDump from '@/dumps/WindowManager.ts';
@@ -54,12 +55,12 @@ const WmDumpMessage = lookup_type(jsonProtoDefsWm, 'com.android.server.wm.Window
 const SfTraceMessage = lookup_type(jsonProtoDefsSf, 'android.surfaceflinger.LayersTraceFileProto');
 const SfDumpMessage = lookup_type(jsonProtoDefsSf, 'android.surfaceflinger.LayersProto');
 const SfTransactionTraceMessage = lookup_type(jsonProtoDefsTransaction, 'Trace');
-const SfTransactionEventsTraceMessage = lookup_type(jsonProtoDefsTransactionEvents, 'android.TransactionEventsProto');
 const WaylandTraceMessage = lookup_type(jsonProtoDefsWl, 'org.chromium.arc.wayland_composer.TraceFileProto');
 const WaylandDumpMessage = lookup_type(jsonProtoDefsWl, 'org.chromium.arc.wayland_composer.OutputStateProto');
 const ProtoLogMessage = lookup_type(jsonProtoDefsProtoLog, 'com.android.internal.protolog.ProtoLogFileProto');
 const SystemUiTraceMessage = lookup_type(jsonProtoDefsSysUi, 'com.android.systemui.tracing.SystemUiTraceFileProto');
 const LauncherTraceMessage = lookup_type(jsonProtoDefsLauncher, 'com.android.launcher3.tracing.LauncherTraceFileProto');
+const InputMethodEditorTraceMessage = lookup_type(jsonProtoDefsIme, "android.view.inputmethod.InputMethodEditorTraceFileProto");
 
 const LAYER_TRACE_MAGIC_NUMBER = [0x09, 0x4c, 0x59, 0x52, 0x54, 0x52, 0x41, 0x43, 0x45]; // .LYRTRACE
 const WINDOW_TRACE_MAGIC_NUMBER = [0x09, 0x57, 0x49, 0x4e, 0x54, 0x52, 0x41, 0x43, 0x45]; // .WINTRACE
@@ -68,6 +69,7 @@ const WAYLAND_TRACE_MAGIC_NUMBER = [0x09, 0x57, 0x59, 0x4c, 0x54, 0x52, 0x41, 0x
 const PROTO_LOG_MAGIC_NUMBER = [0x09, 0x50, 0x52, 0x4f, 0x54, 0x4f, 0x4c, 0x4f, 0x47]; // .PROTOLOG
 const SYSTEM_UI_MAGIC_NUMBER = [0x09, 0x53, 0x59, 0x53, 0x55, 0x49, 0x54, 0x52, 0x43]; // .SYSUITRC
 const LAUNCHER_MAGIC_NUMBER = [0x09, 0x4C, 0x4E, 0x43, 0x48, 0x52, 0x54, 0x52, 0x43]; // .LNCHRTRC
+const IME_TRACE_MAGIC_NUMBER = [0x09, 0x49, 0x4d, 0x45, 0x54, 0x52, 0x41, 0x43, 0x45] //.IMETRACE
 
 const FILE_TYPES = Object.freeze({
   WINDOW_MANAGER_TRACE: 'WindowManagerTrace',
@@ -76,12 +78,12 @@ const FILE_TYPES = Object.freeze({
   SURFACE_FLINGER_DUMP: 'SurfaceFlingerDump',
   SCREEN_RECORDING: 'ScreenRecording',
   TRANSACTIONS_TRACE: 'TransactionsTrace',
-  TRANSACTION_EVENTS_TRACE: 'TransactionMergesTrace',
   WAYLAND_TRACE: 'WaylandTrace',
   WAYLAND_DUMP: 'WaylandDump',
   PROTO_LOG: 'ProtoLog',
   SYSTEM_UI: 'SystemUI',
   LAUNCHER: 'Launcher',
+  IME_TRACE: 'ImeTrace',
 });
 
 const WINDOW_MANAGER_ICON = 'view_compact';
@@ -92,6 +94,7 @@ const WAYLAND_ICON = 'filter_none';
 const PROTO_LOG_ICON = 'notes';
 const SYSTEM_UI_ICON = 'filter_none';
 const LAUNCHER_ICON = 'filter_none';
+const IME_ICON = 'keyboard';
 
 const FILE_ICONS = {
   [FILE_TYPES.WINDOW_MANAGER_TRACE]: WINDOW_MANAGER_ICON,
@@ -100,12 +103,12 @@ const FILE_ICONS = {
   [FILE_TYPES.SURFACE_FLINGER_DUMP]: SURFACE_FLINGER_ICON,
   [FILE_TYPES.SCREEN_RECORDING]: SCREEN_RECORDING_ICON,
   [FILE_TYPES.TRANSACTIONS_TRACE]: TRANSACTION_ICON,
-  [FILE_TYPES.TRANSACTION_EVENTS_TRACE]: TRANSACTION_ICON,
   [FILE_TYPES.WAYLAND_TRACE]: WAYLAND_ICON,
   [FILE_TYPES.WAYLAND_DUMP]: WAYLAND_ICON,
   [FILE_TYPES.PROTO_LOG]: PROTO_LOG_ICON,
   [FILE_TYPES.SYSTEM_UI]: SYSTEM_UI_ICON,
   [FILE_TYPES.LAUNCHER]: LAUNCHER_ICON,
+  [FILE_TYPES.IME_TRACE]: IME_ICON,
 };
 
 function oneOf(dataType) {
@@ -125,6 +128,7 @@ const TRACE_TYPES = Object.freeze({
   PROTO_LOG: 'ProtoLog',
   SYSTEM_UI: 'SystemUI',
   LAUNCHER: 'Launcher',
+  IME: 'ImeTrace',
 });
 
 const TRACE_INFO = {
@@ -151,7 +155,6 @@ const TRACE_INFO = {
     icon: TRANSACTION_ICON,
     files: [
       oneOf(FILE_TYPES.TRANSACTIONS_TRACE),
-      manyOf(FILE_TYPES.TRANSACTION_EVENTS_TRACE),
     ],
     constructor: TransactionsTrace,
   },
@@ -178,6 +181,12 @@ const TRACE_INFO = {
     icon: LAUNCHER_ICON,
     files: [oneOf(FILE_TYPES.LAUNCHER)],
     constructor: LauncherTrace,
+  },
+  [TRACE_TYPES.IME]: {
+    name: 'InputMethodEditor',
+    icon: IME_ICON,
+    files: [oneOf(FILE_TYPES.IME_TRACE)],
+    constructor: ImeTrace,
   },
 };
 
@@ -208,6 +217,21 @@ const DUMP_INFO = {
   },
 };
 
+export const TRACE_ICONS = {
+  [TRACE_TYPES.WINDOW_MANAGER]: WINDOW_MANAGER_ICON,
+  [TRACE_TYPES.SURFACE_FLINGER]: SURFACE_FLINGER_ICON,
+  [TRACE_TYPES.SCREEN_RECORDING]: SCREEN_RECORDING_ICON,
+  [TRACE_TYPES.TRANSACTION]: TRANSACTION_ICON,
+  [TRACE_TYPES.WAYLAND]: WAYLAND_ICON,
+  [TRACE_TYPES.PROTO_LOG]: PROTO_LOG_ICON,
+  [TRACE_TYPES.SYSTEM_UI]: SYSTEM_UI_ICON,
+  [TRACE_TYPES.LAUNCHER]: LAUNCHER_ICON,
+
+  [DUMP_TYPES.WINDOW_MANAGER]: WINDOW_MANAGER_ICON,
+  [DUMP_TYPES.SURFACE_FLINGER]: SURFACE_FLINGER_ICON,
+  [DUMP_TYPES.WAYLAND]: WAYLAND_ICON,
+};
+
 // TODO: Rename name to defaultName
 const FILE_DECODERS = {
   [FILE_TYPES.WINDOW_MANAGER_TRACE]: {
@@ -216,7 +240,7 @@ const FILE_DECODERS = {
     decoderParams: {
       type: FILE_TYPES.WINDOW_MANAGER_TRACE,
       protoType: WmTraceMessage,
-      transform: transform_window_trace,
+      transform: WindowManagerTrace.fromProto,
       timeline: true,
     },
   },
@@ -227,7 +251,7 @@ const FILE_DECODERS = {
       type: FILE_TYPES.SURFACE_FLINGER_TRACE,
       mime: 'application/octet-stream',
       protoType: SfTraceMessage,
-      transform: transform_layers_trace,
+      transform: transformLayersTrace,
       timeline: true,
     },
   },
@@ -249,7 +273,7 @@ const FILE_DECODERS = {
       type: FILE_TYPES.SURFACE_FLINGER_DUMP,
       mime: 'application/octet-stream',
       protoType: SfDumpMessage,
-      transform: (decoded) => transform_layers(true /* includesCompositionState*/, decoded),
+      transform: (decoded) => transformLayers(true /* includesCompositionState*/, decoded),
       timeline: false,
     },
   },
@@ -260,7 +284,7 @@ const FILE_DECODERS = {
       type: FILE_TYPES.WINDOW_MANAGER_DUMP,
       mime: 'application/octet-stream',
       protoType: WmDumpMessage,
-      transform: transform_window_service,
+      transform: WindowManagerDump.fromProto,
       timeline: false,
     },
   },
@@ -295,17 +319,6 @@ const FILE_DECODERS = {
       timeline: true,
     },
   },
-  [FILE_TYPES.TRANSACTION_EVENTS_TRACE]: {
-    name: 'Transaction merges',
-    decoder: protoDecoder,
-    decoderParams: {
-      type: FILE_TYPES.TRANSACTION_EVENTS_TRACE,
-      mime: 'application/octet-stream',
-      protoType: SfTransactionEventsTraceMessage,
-      transform: transform_TRANSACTION_EVENTS_TRACE,
-      timeline: true,
-    },
-  },
   [FILE_TYPES.PROTO_LOG]: {
     name: 'ProtoLog',
     decoder: protoDecoder,
@@ -336,6 +349,17 @@ const FILE_DECODERS = {
       mime: 'application/octet-stream',
       protoType: LauncherTraceMessage,
       transform: transform_launcher_trace,
+      timeline: true,
+    },
+  },
+  [FILE_TYPES.IME_TRACE]: {
+    name: 'InputMethodEditor trace',
+    decoder: protoDecoder,
+    decoderParams: {
+      type: FILE_TYPES.IME_TRACE,
+      mime: 'application/octet-stream',
+      protoType: InputMethodEditorTraceMessage,
+      transform: transform_ime_trace,
       timeline: true,
     },
   },
@@ -396,7 +420,7 @@ function protoDecoder(buffer, params, fileName, store) {
   const transformed = decodeAndTransformProto(buffer, params, store.displayDefaults);
   let data;
   if (params.timeline) {
-    data = transformed.children;
+    data = transformed.entries ?? transformed.children;
   } else {
     data = [transformed];
   }
@@ -469,13 +493,16 @@ function detectAndDecode(buffer, fileName, store) {
   if (arrayStartsWith(buffer, LAUNCHER_MAGIC_NUMBER)) {
     return decodedFile(FILE_TYPES.LAUNCHER, buffer, fileName, store);
   }
+  if (arrayStartsWith(buffer, IME_TRACE_MAGIC_NUMBER)) {
+    return decodedFile(FILE_TYPES.IME_TRACE, buffer, fileName, store);
+  }
 
+  // TODO(b/169305853): Add magic number at beginning of file for better auto detection
   for (const [filetype, condition] of [
     [FILE_TYPES.TRANSACTIONS_TRACE, (file) => file.data.length > 0],
     [FILE_TYPES.WAYLAND_DUMP, (file) => (file.data.length > 0 && file.data.children[0] > 0) || file.data.length > 1],
     [FILE_TYPES.WINDOW_MANAGER_DUMP],
     [FILE_TYPES.SURFACE_FLINGER_DUMP],
-    [FILE_TYPES.TRANSACTION_EVENTS_TRACE], // TODO: Add magic number at begging of file for better auto detection
   ]) {
     try {
       const [, fileData] = decodedFile(filetype, buffer, fileName, store);
