@@ -18,13 +18,13 @@
       <md-card-header>
         <md-card-header-text>
           <div class="md-title">
-            <md-icon>{{ FILE_ICONS[file.type] }}</md-icon>
-            {{file.filename}}
+            <md-icon>{{ TRACE_ICONS[file.type] }}</md-icon>
+            {{file.type}}
           </div>
         </md-card-header-text>
         <md-button
           :href="file.blobUrl"
-          :download="file.filename"
+          :download="file.type"
           class="md-icon-button"
         >
           <md-icon>save_alt</md-icon>
@@ -75,13 +75,13 @@ import LogView from '@/LogView.vue';
 import FileType from '@/mixins/FileType.js';
 import FlatCard from '@/components/FlatCard.vue';
 
-import {FILE_ICONS} from '@/decode.js';
+import {TRACE_ICONS} from '@/decode.js';
 
 export default {
   name: 'dataview',
   data() {
     return {
-      FILE_ICONS,
+      TRACE_ICONS,
     };
   },
   methods: {
