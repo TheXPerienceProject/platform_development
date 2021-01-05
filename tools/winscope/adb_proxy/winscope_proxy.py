@@ -47,7 +47,7 @@ LOG_LEVEL = logging.WARNING
 PORT = 5544
 
 # Keep in sync with WINSCOPE_PROXY_VERSION in Winscope DataAdb.vue
-VERSION = '0.9'
+VERSION = '0.8'
 
 WINSCOPE_VERSION_HEADER = "Winscope-Proxy-Version"
 WINSCOPE_TOKEN_HEADER = "Winscope-Token"
@@ -162,8 +162,8 @@ class SurfaceFlingerTraceConfig:
     """
 
     def __init__(self) -> None:
-        # default config flags
-        self.flags = 1 << 0 | 1 << 1
+        # default config flags CRITICAL | INPUT | SYNC
+        self.flags = 1 << 0 | 1 << 1 | 1 << 6
 
     def add(self, config: str) -> None:
         self.flags |= CONFIG_FLAG[config]
@@ -179,8 +179,6 @@ CONFIG_FLAG = {
     "composition": 1 << 2,
     "metadata": 1 << 3,
     "hwc": 1 << 4
-    "buffers": 1 << 5,
-    "sync": 1 << 6
 }
 
 
@@ -602,7 +600,7 @@ class ConfigTrace(DeviceRequestEndpoint):
         log.debug(f"Starting shell {' '.join(shell)}")
         process = subprocess.Popen(shell, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                    stdin=subprocess.PIPE, start_new_session=True)
-        log.debug(f"Changing trace config on device {device_id}")
+        log.debug(f"Changing trace config on device {device_id} cmd:{command}")
         out, err = process.communicate(command.encode('utf-8'))
         if process.returncode != 0:
             raise AdbError(
