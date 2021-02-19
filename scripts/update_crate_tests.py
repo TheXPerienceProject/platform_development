@@ -20,23 +20,49 @@ import platform
 import subprocess
 import sys
 
+test_options = {"ring_device_test_tests_digest_tests": [{"test-timeout": "600000"}]}
+test_exclude = [
+        "aidl_test_rust_client",
+        "aidl_test_rust_service"
+    ]
+exclude_paths = [
+        "//external/adhd",
+        "//external/crosvm",
+        "//external/libchromeos-rs",
+        "//external/vm_tools"
+    ]
+
 class Env(object):
-    def __init__(self):
+    def __init__(self, path):
         try:
             self.ANDROID_BUILD_TOP = os.environ['ANDROID_BUILD_TOP']
         except:
             sys.exit('ERROR: this script must be run from an Android tree.')
-        self.cwd = os.getcwd()
-        self.cwd_relative = self.cwd.split(self.ANDROID_BUILD_TOP)[1]
+        if path == None:
+            self.cwd = os.getcwd()
+        else:
+            self.cwd = path
+        try:
+            self.cwd_relative = self.cwd.split(self.ANDROID_BUILD_TOP)[1]
+            self.setup = True
+        except:
+            # Mark setup as failed if a path to a rust crate is not provided.
+            self.setup = False
 
 class Bazel(object):
     # set up the Bazel queryview
     def __init__(self, env):
         os.chdir(env.ANDROID_BUILD_TOP)
-        if not os.path.exists("out/soong/queryview"):
-            print("Building Bazel Queryview. This can take a couple of minutes...")
-            cmd = "./build/soong/soong_ui.bash --build-mode --all-modules --dir=. queryview"
-            subprocess.check_output(cmd, shell=True)
+        print("Building Bazel Queryview. This can take a couple of minutes...")
+        cmd = "./build/soong/soong_ui.bash --build-mode --all-modules --dir=. queryview"
+        try:
+            out = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT)
+            self.setup = True
+        except subprocess.CalledProcessError as e:
+            print("Error: Unable to update TEST_MAPPING due to the following build error:")
+            print(e.output)
+            # Mark setup as failed if the Bazel queryview fails to build.
+            self.setup = False
         os.chdir(env.cwd)
 
     def path(self):
@@ -61,29 +87,29 @@ class Bazel(object):
     # Return all reverse dependencies for a single module.
     def query_rdeps(self, module):
         with open(os.devnull, 'wb') as DEVNULL:
-            # Bazel queryview special-cases external/ so we need two
-            # separate queries to collect all the reverse dependencies.
             cmd = (self.path() + " query --config=queryview \'rdeps(//..., " +
                     module + ")\' --output=label_kind")
             out = (subprocess.check_output(cmd, shell=True, stderr=DEVNULL, text=True)
-                    .strip().split("\n"))
-            cmd = (self.path() + " query --config=queryview --universe_scope=//external/... " +
-                    "--order_output=no \"allrdeps(" + module + ")\" --output=label_kind")
-            out += (subprocess.check_output(cmd, shell=True, stderr=DEVNULL, text=True)
                     .strip().split("\n"))
             if '' in out:
                 out.remove('')
             return out
 
+    def exclude_module(self, module):
+        for path in exclude_paths:
+            if module.startswith(path):
+                return True
+        return False
+
     # Return all reverse dependency tests for modules in this package.
     def query_rdep_tests(self, modules):
         rdep_tests = set()
-        print("Querying tests that depend on this crate for TEST_MAPPING. This can take a couple of minutes...")
         for module in modules:
             for rdep in self.query_rdeps(module):
-                rule_type, tmp, module = rdep.split(" ")
+                rule_type, tmp, mod = rdep.split(" ")
                 if rule_type == "rust_test_" or rule_type == "rust_test":
-                    rdep_tests.add(module.split(":")[1].split("--")[0])
+                    if self.exclude_module(mod) == False:
+                        rdep_tests.add(mod.split(":")[1].split("--")[0])
         return rdep_tests
 
 
@@ -97,11 +123,13 @@ class Crate(object):
 
 
 class TestMapping(object):
-    def __init__(self):
-        self.env = Env()
+    def __init__(self, path):
+        self.env = Env(path)
         self.bazel = Bazel(self.env)
 
     def create_test_mapping(self, path):
+        if self.env.setup == False or self.bazel.setup == False:
+            return
         tests = self.get_tests(path)
         if not bool(tests):
             return
@@ -118,17 +146,27 @@ class TestMapping(object):
     def tests_to_mapping(self, tests):
         test_mapping = {"presubmit": []}
         for test in tests:
-            test_mapping["presubmit"].append({"name": test})
+            if test in test_exclude:
+                continue
+            if test in test_options:
+                test_mapping["presubmit"].append({"name": test, "options": test_options[test]})
+            else:
+                test_mapping["presubmit"].append({"name": test})
         return test_mapping
 
     def write_test_mapping(self, test_mapping):
         with open("TEST_MAPPING", "w") as json_file:
-            json_file.write("// Generated by cargo2android.py for tests that depend on this crate.\n")
+            json_file.write("// Generated by update_crate_tests.py for tests that depend on this crate.\n")
             json.dump(test_mapping, json_file, indent=2, separators=(',', ': '), sort_keys=True)
             json_file.write("\n")
+        print("TEST_MAPPING successfully updated!")
 
 def main():
-    TestMapping().create_test_mapping(None)
+    if len(sys.argv) == 2:
+        path = sys.argv[1]
+    else:
+        path = None
+    TestMapping(path).create_test_mapping(None)
 
 if __name__ == '__main__':
   main()
