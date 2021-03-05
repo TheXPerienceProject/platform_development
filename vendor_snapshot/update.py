@@ -99,6 +99,8 @@ JSON_TO_BP = {
     'Sanitize': 'sanitize',
     'SanitizeMinimalDep': 'sanitize_minimal_dep',
     'SanitizeUbsanDep': 'sanitize_ubsan_dep',
+    # TODO(b/181815415) remove is_lldnk when possible
+    'IsLlndk': 'is_llndk',
     'Symlinks': 'symlinks',
     'InitRc': 'init_rc',
     'VintfFragments': 'vintf_fragments',
