@@ -676,6 +676,7 @@ def main():
                 'option.')
 
     snapshot_version = args.snapshot_version
+    raw_mode = args.image.strip().lower() == 'raw'
 
     if os.path.exists(install_dir):
         def remove_dir():
@@ -684,15 +685,16 @@ def main():
         if args.overwrite:
             remove_dir()
         else:
-            resp = input('Directory {} already exists. IT WILL BE REMOVED.\n'
-                         'Are you sure? (yes/no): '.format(install_dir))
-            if resp == 'yes':
-                remove_dir()
-            elif resp == 'no':
-                logging.info('Cancelled snapshot install.')
-                return
-            else:
-                raise ValueError('Did not understand: ' + resp)
+            if not raw_mode:
+                resp = input('Directory {} already exists. IT WILL BE REMOVED.\n'
+                             'Are you sure? (yes/no): '.format(install_dir))
+                if resp == 'yes':
+                    remove_dir()
+                elif resp == 'no':
+                    logging.info('Cancelled snapshot install.')
+                    return
+                else:
+                    raise ValueError('Did not understand: ' + resp)
     check_call(['mkdir', '-p', install_dir])
 
     install_artifacts(
@@ -703,7 +705,9 @@ def main():
         local_dir=local,
         symlink=args.symlink,
         install_dir=install_dir)
-    gen_bp_files(args.image, install_dir, snapshot_version)
+
+    if not raw_mode:
+        gen_bp_files(args.image, install_dir, snapshot_version)
 
 if __name__ == '__main__':
     main()
