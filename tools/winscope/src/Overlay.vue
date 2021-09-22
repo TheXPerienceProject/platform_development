@@ -67,6 +67,15 @@
               </div>
 
               <div class="active-timeline" v-show="minimized">
+                <md-field class="seek-timestamp-field">
+                  <label>Search for timestamp</label>
+                  <md-input v-model="searchTimestamp"></md-input>
+                </md-field>
+
+                <md-button
+                  @click="updateSearchForTimestamp"
+                >Search</md-button>
+
                 <div
                   class="active-timeline-icon"
                   @click="$refs.navigationTypeSelection.$el
@@ -81,8 +90,9 @@
                 </div>
 
                 <md-field
+                  v-if="multipleTraces"
                   ref="navigationTypeSelection"
-                  class="nagivation-style-selection-field"
+                  class="navigation-style-selection-field"
                 >
 
                   <label>Navigation</label>
@@ -91,9 +101,16 @@
                     name="navigationStyle"
                     md-dense
                   >
-                    <md-icon-option :value="NAVIGATION_STYLE.GLOBAL"
+                    <md-icon-option
+                      :value="NAVIGATION_STYLE.GLOBAL"
                       icon="public"
                       desc="Consider all timelines for navigation"
+                    />
+                    <md-icon-option
+                      v-if="tagAndErrorTraces"
+                      :value="NAVIGATION_STYLE.FLICKER"
+                      icon="details"
+                      desc="Display transition tags and flicker errors on global timeline"
                     />
                     <md-icon-option
                       :value="NAVIGATION_STYLE.FOCUSED"
@@ -137,6 +154,9 @@
                   {{ seekTime }}
                 </label>
                 <timeline
+                  :flickerMode="flickerMode"
+                  :tags="Object.freeze(tags)"
+                  :errorTimestamps="Object.freeze(errorTimestamps)"
                   :timeline="Object.freeze(minimizedTimeline.timeline)"
                   :selected-index="minimizedTimeline.selectedIndex"
                   :scale="scale"
@@ -265,7 +285,7 @@ import {NAVIGATION_STYLE} from './utils/consts';
 import {TRACE_ICONS} from '@/decode.js';
 
 // eslint-disable-next-line camelcase
-import {nanos_to_string} from './transform.js';
+import {nanos_to_string, string_to_nanos} from './transform.js';
 
 export default {
   name: 'overlay',
@@ -290,11 +310,15 @@ export default {
       crop: null,
       cropIntent: null,
       TRACE_ICONS,
+      searchTimestamp: '',
+      tags: [],
+      errorTimestamps: [],
     };
   },
   created() {
     this.mergedTimeline = this.computeMergedTimeline();
     this.$store.commit('setMergedTimeline', this.mergedTimeline);
+    this.updateTagsAndErrors();
     this.updateNavigationFileFilter();
   },
   mounted() {
@@ -308,7 +332,8 @@ export default {
       // Only store navigation type in local store if it's a type that will
       // work regardless of what data is loaded.
       if (style === NAVIGATION_STYLE.GLOBAL ||
-        style === NAVIGATION_STYLE.FOCUSED) {
+        style === NAVIGATION_STYLE.FOCUSED ||
+        style === NAVIGATION_STYLE.FLICKER) {
         this.store.navigationStyle = style;
       }
       this.updateNavigationFileFilter();
@@ -331,6 +356,12 @@ export default {
     },
     timelineFiles() {
       return this.$store.getters.timelineFiles;
+    },
+    tagFiles() {
+      return this.$store.getters.tagFiles;
+    },
+    errorFiles() {
+      return this.$store.getters.errorFiles;
     },
     focusedFile() {
       return this.$store.state.focusedFile;
@@ -367,6 +398,9 @@ export default {
         case NAVIGATION_STYLE.GLOBAL:
           return 'All timelines';
 
+        case NAVIGATION_STYLE.FLICKER:
+          return 'All timelines with tags and errors';
+
         case NAVIGATION_STYLE.FOCUSED:
           return `Focused: ${this.focusedFile.type}`;
 
@@ -376,7 +410,8 @@ export default {
         default:
           const split = this.navigationStyle.split('-');
           if (split[0] !== NAVIGATION_STYLE.TARGETED) {
-            throw new Error('Unexpected nagivation type');
+            console.warn('Unexpected navigation type; fallback to global');
+            return 'All timelines';
           }
 
           const fileType = split[1];
@@ -389,6 +424,9 @@ export default {
         case NAVIGATION_STYLE.GLOBAL:
           return 'public';
 
+        case NAVIGATION_STYLE.FLICKER:
+          return 'details';
+
         case NAVIGATION_STYLE.FOCUSED:
           return TRACE_ICONS[this.focusedFile.type];
 
@@ -398,7 +436,8 @@ export default {
         default:
           const split = this.navigationStyle.split('-');
           if (split[0] !== NAVIGATION_STYLE.TARGETED) {
-            throw new Error('Unexpected nagivation type');
+            console.warn('Unexpected navigation type; fallback to global');
+            return 'public';
           }
 
           const fileType = split[1];
@@ -411,8 +450,16 @@ export default {
         return this.mergedTimeline;
       }
 
+      if (this.navigationStyle === NAVIGATION_STYLE.FLICKER) {
+        return this.mergedTimeline;
+      }
+
       if (this.navigationStyle === NAVIGATION_STYLE.FOCUSED) {
-        return this.focusedFile;
+        //dumps do not have a timeline, so if scrolling over a dump, show merged timeline
+        if (this.focusedFile.timeline) {
+          return this.focusedFile;
+        }
+        return this.mergedTimeline;
       }
 
       if (this.navigationStyle === NAVIGATION_STYLE.CUSTOM) {
@@ -425,11 +472,21 @@ export default {
             .traces[this.navigationStyle.split('-')[1]];
       }
 
-      throw new Error('Unexpected Nagivation Style');
+      console.warn('Unexpected navigation type; fallback to global');
+      return this.mergedTimeline;
     },
     isCropped() {
       return this.crop != null &&
         (this.crop.left !== 0 || this.crop.right !== 1);
+    },
+    multipleTraces() {
+      return this.timelineFiles.length > 1;
+    },
+    flickerMode() {
+      return this.navigationStyle === NAVIGATION_STYLE.FLICKER;
+    },
+    tagAndErrorTraces() {
+      return this.tagFiles.length > 0 || this.errorFiles.length >0;
     },
   },
   updated() {
@@ -442,6 +499,35 @@ export default {
     });
   },
   methods: {
+    getStates(files) {
+      var states = [];
+      for (const file of files) {
+        states.push(...file.data);
+      }
+      return states;
+    },
+    updateTags() {
+      var tagStates = this.getStates(this.tagFiles);
+      var tags = [];
+      tagStates.forEach(tagState => {
+        const time = this.findClosestTimestamp(tagState.timestamp);
+        tagState.tags.forEach(tag => {
+          tag.timestamp = time;
+          tags.push(tag);
+        });
+      });;
+      return tags;
+    },
+    updateErrorTimestamps() {
+      var errorStates = this.getStates(this.errorFiles);
+      var errorTimestamps = [];
+      //TODO (b/196201487): update more than one error for each state, add check if errors empty
+      errorStates.forEach(errorState => {
+          errorTimestamps.push(errorState.timestamp);
+        }
+      );
+      return errorTimestamps;
+    },
     emitBottomHeightUpdate() {
       if (this.$refs.bottomNav) {
         const newHeight = this.$refs.bottomNav.$el.clientHeight;
@@ -577,6 +663,10 @@ export default {
           navigationStyleFilter = (f) => true;
           break;
 
+        case NAVIGATION_STYLE.FLICKER:
+          navigationStyleFilter = (f) => true;
+          break;
+
         case NAVIGATION_STYLE.FOCUSED:
           navigationStyleFilter =
             (f) => f.type === this.focusedFile.type;
@@ -589,7 +679,9 @@ export default {
         default:
           const split = this.navigationStyle.split('-');
           if (split[0] !== NAVIGATION_STYLE.TARGETED) {
-            throw new Error('Unexpected nagivation type');
+            console.warn('Unexpected navigation type; fallback to global');
+            navigationStyleFilter = (f) => true;
+            break;
           }
 
           const fileType = split[1];
@@ -622,6 +714,28 @@ export default {
     },
     clearSelection() {
       this.crop = null;
+    },
+    updateSearchForTimestamp() {
+      if (/^\d+$/.test(this.searchTimestamp)) {
+        var roundedTimestamp = parseInt(this.searchTimestamp);
+      } else {
+        var roundedTimestamp = string_to_nanos(this.searchTimestamp);
+      }
+      var closestTimestamp = this.findClosestTimestamp(roundedTimestamp);
+      this.$store.dispatch('updateTimelineTime', parseInt(closestTimestamp));
+    },
+    findClosestTimestamp(roundedTimestamp) {
+      return this.mergedTimeline.timeline.reduce(function(prev, curr) {
+        return (Math.abs(curr-roundedTimestamp) < Math.abs(prev-roundedTimestamp) ? curr : prev);
+      });
+    },
+    updateTagsAndErrors() {
+      if (this.tagFiles) {
+        this.tags = this.updateTags();
+      }
+      if (this.errorFiles) {
+        this.errorTimestamps = this.updateErrorTimestamps();
+      }
     },
   },
   components: {
@@ -816,7 +930,7 @@ export default {
   margin-top: 4px;
 }
 
-.nagivation-style-selection-field {
+.navigation-style-selection-field {
   width: 90px;
   margin-right: 10px;
   margin-bottom: 0;

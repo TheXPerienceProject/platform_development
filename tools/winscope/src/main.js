@@ -66,6 +66,8 @@ const store = new Vuex.Store({
     dumps: {},
     excludeFromTimeline: [
       TRACE_TYPES.PROTO_LOG,
+      TRACE_TYPES.TAG,
+      TRACE_TYPES.ERROR
     ],
     activeFile: null,
     focusedFile: null,
@@ -92,6 +94,14 @@ const store = new Vuex.Store({
     timelineFiles(state, getters) {
       return Object.values(state.traces)
         .filter(file => !state.excludeFromTimeline.includes(file.type));
+    },
+    tagFiles(state, getters) {
+      return Object.values(state.traces)
+      .filter(file => file.type === TRACE_TYPES.TAG);
+    },
+    errorFiles(state, getters) {
+      return Object.values(state.traces)
+      .filter(file => file.type === TRACE_TYPES.ERROR);
     },
     sortedTimelineFiles(state, getters) {
       return sortFiles(getters.timelineFiles);
@@ -252,6 +262,9 @@ const store = new Vuex.Store({
     },
     updateTimelineTime(context, timestamp) {
       for (const file of context.getters.files) {
+        //dumps do not have a timeline, so only look at files with timelines to update the timestamp
+        if (!file.timeline) continue;
+
         const type = file.type;
         const entryIndex = findLastMatchingSorted(
           file.timeline,
