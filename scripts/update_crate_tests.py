@@ -27,11 +27,15 @@ argument is provided, it assumes the crate is the current directory.
 This script is automatically called by external_updater.
 """
 
+import argparse
+import glob
 import json
 import os
 import platform
 import subprocess
 import sys
+from datetime import datetime
+from pathlib import Path
 
 # Some tests requires specific options. Consider fixing the upstream crate
 # before updating this dictionary.
@@ -43,7 +47,12 @@ TEST_OPTIONS = {
 # Excluded tests. These tests will be ignored by this script.
 TEST_EXCLUDE = [
         "aidl_test_rust_client",
-        "aidl_test_rust_service"
+        "aidl_test_rust_service",
+        "ash_device_test_src_lib",
+        "ash_device_test_tests_constant_size_arrays",
+        "ash_device_test_tests_display",
+        "shared_library_device_test_src_lib",
+        "vulkano_device_test_src_lib"
 ]
 
 # Excluded modules.
@@ -105,7 +114,7 @@ class Bazel(object):
         # soong_ui requires to be at the root of the repository.
         os.chdir(env.ANDROID_BUILD_TOP)
         print("Generating Bazel files...")
-        cmd = [soong_ui, "--make-mode", "GENERATE_BAZEL_FILES=1", "nothing"]
+        cmd = [soong_ui, "--make-mode", "bp2build"]
         try:
             subprocess.check_output(cmd, stderr=subprocess.STDOUT, text=True)
         except subprocess.CalledProcessError as e:
@@ -245,19 +254,51 @@ class TestMapping(object):
         print("TEST_MAPPING successfully updated for %s!" % self.package.dir_rel)
 
 
+def parse_args():
+    parser = argparse.ArgumentParser('update_crate_tests')
+    parser.add_argument('paths',
+                        nargs='*',
+                        help='Absolute or relative paths of the projects as globs.')
+    parser.add_argument('--branch_and_commit',
+                        action='store_true',
+                        help='Starts a new branch and commit changes.')
+    parser.add_argument('--push_change',
+                        action='store_true',
+                        help='Pushes change to Gerrit.')
+    return parser.parse_args()
+
+
 def main():
-    if len(sys.argv) > 1:
-        paths = sys.argv[1:]
-    else:
-        paths = [os.getcwd()]
+    args = parse_args()
+    paths = args.paths if len(args.paths) > 0 else [os.getcwd()]
+    # We want to use glob to get all the paths, so we first convert to absolute.
+    paths = [Path(path).resolve() for path in paths]
+    paths = sorted([path for abs_path in paths
+                    for path in glob.glob(str(abs_path))])
+
     env = Env()
     bazel = Bazel(env)
     for path in paths:
         try:
             test_mapping = TestMapping(env, bazel, path)
-        except UpdaterException as err:
+            test_mapping.create()
+            changed = (subprocess.call(['git', 'diff', '--quiet']) == 1)
+            untracked = (os.path.isfile('TEST_MAPPING') and
+                         (subprocess.run(['git', 'ls-files', '--error-unmatch', 'TEST_MAPPING'],
+                                         stderr=subprocess.DEVNULL,
+                                         stdout=subprocess.DEVNULL).returncode == 1))
+            if args.branch_and_commit and (changed or untracked):
+                subprocess.check_output(['repo', 'start',
+                                         'tmp_auto_test_mapping', '.'])
+                subprocess.check_output(['git', 'add', 'TEST_MAPPING'])
+                subprocess.check_output(['git', 'commit', '-m',
+                                         'Update TEST_MAPPING\n\nTest: None'])
+            if args.push_change and (changed or untracked):
+                date = datetime.today().strftime('%m-%d')
+                subprocess.check_output(['git', 'push', 'aosp', 'HEAD:refs/for/master',
+                                         '-o', 'topic=test-mapping-%s' % date])
+        except (UpdaterException, subprocess.CalledProcessError) as err:
             sys.exit("Error: " + str(err))
-        test_mapping.create()
 
 if __name__ == '__main__':
   main()

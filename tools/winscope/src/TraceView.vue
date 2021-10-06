@@ -18,6 +18,7 @@
       <rects
         :bounds="bounds"
         :rects="rects"
+        :displays="displays"
         :highlight="highlight"
         @rect-click="onRectClick"
       />
@@ -42,9 +43,14 @@
           </md-checkbox>
           <md-checkbox v-model="store.onlyVisible">Only visible</md-checkbox>
           <md-checkbox v-model="store.flattened">Flat</md-checkbox>
+          <md-checkbox v-if="hasTagsOrErrors" v-model="store.flickerTraceView">Flicker</md-checkbox>
           <md-field md-inline class="filter">
             <label>Filter...</label>
-            <md-input v-model="hierarchyPropertyFilterString"></md-input>
+            <md-input
+              v-model="hierarchyPropertyFilterString"
+              v-on:focus="updateInputMode(true)"
+              v-on:blur="updateInputMode(false)"
+            />
           </md-field>
         </md-content>
         <div class="tree-view-wrapper">
@@ -55,6 +61,10 @@
             :selected="hierarchySelected"
             :filter="hierarchyFilter"
             :flattened="store.flattened"
+            :onlyVisible="store.onlyVisible"
+            :flickerTraceView="store.flickerTraceView"
+            :presentTags="presentTags"
+            :presentErrors="presentErrors"
             :items-clickable="true"
             :useGlobalCollapsedState="true"
             :simplify-names="store.simplifyNames"
@@ -93,7 +103,11 @@
           </md-checkbox>
           <md-field md-inline class="filter">
             <label>Filter...</label>
-            <md-input v-model="propertyFilterString"></md-input>
+            <md-input
+              v-model="propertyFilterString"
+              v-on:focus="updateInputMode(true)"
+              v-on:blur="updateInputMode(false)"
+            />
           </md-field>
         </md-content>
         <div class="properties-content">
@@ -133,7 +147,7 @@ import PropertiesTreeElement from './PropertiesTreeElement.vue';
 import {ObjectTransformer} from './transform.js';
 import {DiffGenerator, defaultModifiedCheck} from './utils/diff.js';
 import {TRACE_TYPES, DUMP_TYPES} from './decode.js';
-import {stableIdCompatibilityFixup} from './utils/utils.js';
+import {isPropertyMatch, stableIdCompatibilityFixup} from './utils/utils.js';
 import {CompatibleFeatures} from './utils/compatibility.js';
 import {getPropertiesForDisplay} from './flickerlib/mixin';
 import ObjectFormatter from './flickerlib/ObjectFormatter';
@@ -165,7 +179,7 @@ function findEntryInTree(tree, id) {
 
 export default {
   name: 'traceview',
-  props: ['store', 'file', 'summarizer'],
+  props: ['store', 'file', 'summarizer', 'presentTags', 'presentErrors'],
   data() {
     return {
       propertyFilterString: '',
@@ -175,6 +189,7 @@ export default {
       lastSelectedStableId: null,
       bounds: {},
       rects: [],
+      displays: [],
       item: null,
       tree: null,
       highlight: null,
@@ -241,6 +256,13 @@ export default {
       this.rects = [...rects].reverse();
       this.bounds = item.bounds;
 
+      //only update displays if item is SF trace and displays present
+      if (item.stableId==="LayerTraceEntry") {
+        this.displays = item.displays;
+      } else {
+        this.displays = [];
+      }
+
       this.hierarchySelected = null;
       this.selectedTree = null;
       this.highlight = null;
@@ -306,9 +328,32 @@ export default {
 
       return prevEntry;
     },
+
+    /** Performs check for id match between entry and present tags/errors
+     * must be carried out for every present tag/error
+     */
+    matchItems(flickerItems, entryItem) {
+      var match = false;
+      flickerItems.forEach(flickerItem => {
+        if (isPropertyMatch(flickerItem, entryItem)) match = true;
+      });
+      return match;
+    },
+    /** Returns check for id match between entry and present tags/errors */
+    isEntryTagMatch(entryItem) {
+      return this.matchItems(this.presentTags, entryItem) || this.matchItems(this.presentErrors, entryItem);
+    },
+
+    /** determines whether left/right arrow keys should move cursor in input field */
+    updateInputMode(isInputMode) {
+      this.store.isInputMode = isInputMode;
+    },
   },
   created() {
     this.setData(this.file.data[this.file.selectedIndex ?? 0]);
+  },
+  destroyed() {
+    this.store.flickerTraceView = false;
   },
   watch: {
     selectedIndex() {
@@ -337,9 +382,12 @@ export default {
     hierarchyFilter() {
       const hierarchyPropertyFilter =
           getFilter(this.hierarchyPropertyFilterString);
-      return this.store.onlyVisible ? (c) => {
+      var fil = this.store.onlyVisible ? (c) => {
         return c.isVisible && hierarchyPropertyFilter(c);
       } : hierarchyPropertyFilter;
+      return this.store.flickerTraceView ? (c) => {
+        return this.isEntryTagMatch(c);
+      } : fil;
     },
     propertyFilter() {
       return getFilter(this.propertyFilterString);
@@ -362,6 +410,9 @@ export default {
       }
 
       return summary;
+    },
+    hasTagsOrErrors() {
+      return this.presentTags.length > 0 || this.presentErrors.length > 0;
     },
   },
   components: {

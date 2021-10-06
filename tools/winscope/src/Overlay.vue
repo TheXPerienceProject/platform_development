@@ -52,9 +52,25 @@
     >
       <div class="nav-content">
         <div class="">
+          <searchbar
+            class="search-bar"
+            v-if="search"
+            :searchTypes="searchTypes"
+            :store="store"
+            :presentTags="Object.freeze(presentTags)"
+            :presentErrors="Object.freeze(presentErrors)"
+            :timeline="mergedTimeline.timeline"
+          />
           <md-toolbar
             md-elevation="0"
             class="md-transparent">
+
+            <md-button
+              @click="toggleSearch()"
+              class="drop-search"
+            >
+              Toggle search bar
+            </md-button>
 
             <div class="toolbar" :class="{ expanded: expanded }">
               <div class="resize-bar" v-show="expanded">
@@ -67,15 +83,6 @@
               </div>
 
               <div class="active-timeline" v-show="minimized">
-                <md-field class="seek-timestamp-field">
-                  <label>Search for timestamp</label>
-                  <md-input v-model="searchTimestamp"></md-input>
-                </md-field>
-
-                <md-button
-                  @click="updateSearchForTimestamp"
-                >Search</md-button>
-
                 <div
                   class="active-timeline-icon"
                   @click="$refs.navigationTypeSelection.$el
@@ -105,12 +112,6 @@
                       :value="NAVIGATION_STYLE.GLOBAL"
                       icon="public"
                       desc="Consider all timelines for navigation"
-                    />
-                    <md-icon-option
-                      v-if="tagAndErrorTraces"
-                      :value="NAVIGATION_STYLE.FLICKER"
-                      icon="details"
-                      desc="Display transition tags and flicker errors on global timeline"
                     />
                     <md-icon-option
                       :value="NAVIGATION_STYLE.FOCUSED"
@@ -150,13 +151,20 @@
                 v-show="minimized"
                 v-if="hasTimeline"
               >
-                <label>
-                  {{ seekTime }}
-                </label>
+                <input
+                  class="timestamp-search-input"
+                  v-model="searchInput"
+                  spellcheck="false"
+                  :placeholder="seekTime"
+                  @focus="updateInputMode(true)"
+                  @blur="updateInputMode(false)"
+                  @keyup.enter="updateSearchForTimestamp"
+                />
                 <timeline
+                  :store="store"
                   :flickerMode="flickerMode"
-                  :tags="Object.freeze(tags)"
-                  :errorTimestamps="Object.freeze(errorTimestamps)"
+                  :tags="Object.freeze(presentTags)"
+                  :errors="Object.freeze(presentErrors)"
                   :timeline="Object.freeze(minimizedTimeline.timeline)"
                   :selected-index="minimizedTimeline.selectedIndex"
                   :scale="scale"
@@ -188,11 +196,11 @@
               >
                 <md-icon v-if="minimized">
                   expand_less
-                  <md-tooltip md-direction="top">Expand timeline</md-tooltip>
+                  <md-tooltip md-direction="top" @click="buttonClicked(`Expand Timeline`)">Expand timeline</md-tooltip>
                 </md-icon>
                 <md-icon v-else>
                   expand_more
-                  <md-tooltip md-direction="top">Collapse timeline</md-tooltip>
+                  <md-tooltip md-direction="top" @click="buttonClicked(`Collapse Timeline`)">Collapse timeline</md-tooltip>
                 </md-icon>
               </md-button>
             </div>
@@ -213,7 +221,17 @@
                 :style="`padding-top: ${resizeOffset}px;`"
               >
                 <div class="seek-time" v-if="seekTime">
-                  <b>Seek time</b>: {{ seekTime }}
+                  <b>Seek time: </b>
+                  <input
+                    class="timestamp-search-input"
+                    :class="{ expanded: expanded }"
+                    v-model="searchInput"
+                    spellcheck="false"
+                    :placeholder="seekTime"
+                    @focus="updateInputMode(true)"
+                    @blur="updateInputMode(false)"
+                    @keyup.enter="updateSearchForTimestamp"
+                  />
                 </div>
 
                 <timelines
@@ -280,16 +298,17 @@ import TimelineSelection from './TimelineSelection.vue';
 import DraggableDiv from './DraggableDiv.vue';
 import VideoView from './VideoView.vue';
 import MdIconOption from './components/IconSelection/IconSelectOption.vue';
+import Searchbar from './Searchbar.vue';
 import FileType from './mixins/FileType.js';
 import {NAVIGATION_STYLE} from './utils/consts';
 import {TRACE_ICONS} from '@/decode.js';
 
 // eslint-disable-next-line camelcase
-import {nanos_to_string, string_to_nanos} from './transform.js';
+import {nanos_to_string, getClosestTimestamp} from './transform.js';
 
 export default {
   name: 'overlay',
-  props: ['store'],
+  props: ['store', 'presentTags', 'presentErrors', 'searchTypes'],
   mixins: [FileType],
   data() {
     return {
@@ -310,15 +329,14 @@ export default {
       crop: null,
       cropIntent: null,
       TRACE_ICONS,
-      searchTimestamp: '',
-      tags: [],
-      errorTimestamps: [],
+      search: false,
+      searchInput: "",
+      isSeekTimeInputMode: false,
     };
   },
   created() {
     this.mergedTimeline = this.computeMergedTimeline();
     this.$store.commit('setMergedTimeline', this.mergedTimeline);
-    this.updateTagsAndErrors();
     this.updateNavigationFileFilter();
   },
   mounted() {
@@ -326,14 +344,14 @@ export default {
   },
   destroyed() {
     this.$store.commit('removeMergedTimeline', this.mergedTimeline);
+    this.updateInputMode(false);
   },
   watch: {
     navigationStyle(style) {
       // Only store navigation type in local store if it's a type that will
       // work regardless of what data is loaded.
       if (style === NAVIGATION_STYLE.GLOBAL ||
-        style === NAVIGATION_STYLE.FOCUSED ||
-        style === NAVIGATION_STYLE.FLICKER) {
+        style === NAVIGATION_STYLE.FOCUSED) {
         this.store.navigationStyle = style;
       }
       this.updateNavigationFileFilter();
@@ -356,12 +374,6 @@ export default {
     },
     timelineFiles() {
       return this.$store.getters.timelineFiles;
-    },
-    tagFiles() {
-      return this.$store.getters.tagFiles;
-    },
-    errorFiles() {
-      return this.$store.getters.errorFiles;
     },
     focusedFile() {
       return this.$store.state.focusedFile;
@@ -398,9 +410,6 @@ export default {
         case NAVIGATION_STYLE.GLOBAL:
           return 'All timelines';
 
-        case NAVIGATION_STYLE.FLICKER:
-          return 'All timelines with tags and errors';
-
         case NAVIGATION_STYLE.FOCUSED:
           return `Focused: ${this.focusedFile.type}`;
 
@@ -423,9 +432,6 @@ export default {
       switch (this.navigationStyle) {
         case NAVIGATION_STYLE.GLOBAL:
           return 'public';
-
-        case NAVIGATION_STYLE.FLICKER:
-          return 'details';
 
         case NAVIGATION_STYLE.FOCUSED:
           return TRACE_ICONS[this.focusedFile.type];
@@ -450,10 +456,6 @@ export default {
         return this.mergedTimeline;
       }
 
-      if (this.navigationStyle === NAVIGATION_STYLE.FLICKER) {
-        return this.mergedTimeline;
-      }
-
       if (this.navigationStyle === NAVIGATION_STYLE.FOCUSED) {
         //dumps do not have a timeline, so if scrolling over a dump, show merged timeline
         if (this.focusedFile.timeline) {
@@ -467,7 +469,10 @@ export default {
         return this.mergedTimeline;
       }
 
-      if (this.navigationStyle.split('-')[0] === NAVIGATION_STYLE.TARGETED) {
+      if (
+        this.navigationStyle.split('-').length >= 2
+        && this.navigationStyle.split('-')[0] === NAVIGATION_STYLE.TARGETED
+      ) {
         return this.$store.state
             .traces[this.navigationStyle.split('-')[1]];
       }
@@ -483,10 +488,7 @@ export default {
       return this.timelineFiles.length > 1;
     },
     flickerMode() {
-      return this.navigationStyle === NAVIGATION_STYLE.FLICKER;
-    },
-    tagAndErrorTraces() {
-      return this.tagFiles.length > 0 || this.errorFiles.length >0;
+      return this.presentTags.length>0 || this.presentErrors.length>0;
     },
   },
   updated() {
@@ -499,35 +501,31 @@ export default {
     });
   },
   methods: {
-    getStates(files) {
-      var states = [];
-      for (const file of files) {
-        states.push(...file.data);
+    toggleSearch() {
+      this.search = !(this.search);
+      this.buttonClicked("Toggle Search Bar");
+    },
+    /**
+     * determines whether left/right arrow keys should move cursor in input field
+     * and upon click of input field, fills with current timestamp
+     */
+    updateInputMode(isInputMode) {
+      this.isSeekTimeInputMode = isInputMode;
+      this.store.isInputMode = isInputMode;
+      if (!isInputMode) {
+        this.searchInput = "";
+      } else {
+        this.searchInput = this.seekTime;
       }
-      return states;
     },
-    updateTags() {
-      var tagStates = this.getStates(this.tagFiles);
-      var tags = [];
-      tagStates.forEach(tagState => {
-        const time = this.findClosestTimestamp(tagState.timestamp);
-        tagState.tags.forEach(tag => {
-          tag.timestamp = time;
-          tags.push(tag);
-        });
-      });;
-      return tags;
+    /** Navigates to closest timestamp in timeline to search input*/
+    updateSearchForTimestamp() {
+      const closestTimestamp = getClosestTimestamp(this.searchInput, this.mergedTimeline.timeline);
+      this.$store.dispatch("updateTimelineTime", closestTimestamp);
+      this.updateInputMode(false);
+      this.newEventOccurred("Searching for timestamp")
     },
-    updateErrorTimestamps() {
-      var errorStates = this.getStates(this.errorFiles);
-      var errorTimestamps = [];
-      //TODO (b/196201487): update more than one error for each state, add check if errors empty
-      errorStates.forEach(errorState => {
-          errorTimestamps.push(errorState.timestamp);
-        }
-      );
-      return errorTimestamps;
-    },
+
     emitBottomHeightUpdate() {
       if (this.$refs.bottomNav) {
         const newHeight = this.$refs.bottomNav.$el.clientHeight;
@@ -547,9 +545,10 @@ export default {
         timelines.push(file.timeline);
       }
 
-      while (true) {
+      var timelineToAdvance = 0;
+      while (timelineToAdvance !== undefined) {
+        timelineToAdvance = undefined;
         let minTime = Infinity;
-        let timelineToAdvance;
 
         for (let i = 0; i < timelines.length; i++) {
           const timeline = timelines[i];
@@ -639,12 +638,15 @@ export default {
     },
     closeVideoOverlay() {
       this.showVideoOverlay = false;
+      this.buttonClicked("Close Video Overlay")
     },
     openVideoOverlay() {
       this.showVideoOverlay = true;
+      this.buttonClicked("Open Video Overlay")
     },
     toggleVideoOverlay() {
       this.showVideoOverlay = !this.showVideoOverlay;
+      this.buttonClicked("Toggle Video Overlay")
     },
     videoLoaded() {
       this.$refs.videoOverlay.contentLoaded();
@@ -660,10 +662,6 @@ export default {
       let navigationStyleFilter;
       switch (this.navigationStyle) {
         case NAVIGATION_STYLE.GLOBAL:
-          navigationStyleFilter = (f) => true;
-          break;
-
-        case NAVIGATION_STYLE.FLICKER:
           navigationStyleFilter = (f) => true;
           break;
 
@@ -688,7 +686,7 @@ export default {
           navigationStyleFilter =
             (f) => f.type === fileType;
       }
-
+      this.changedNavigationStyle(this.navigationStyle);
       this.$store.commit('setNavigationFilesFilter', navigationStyleFilter);
     },
     updateVideoOverlayWidth(width) {
@@ -715,28 +713,6 @@ export default {
     clearSelection() {
       this.crop = null;
     },
-    updateSearchForTimestamp() {
-      if (/^\d+$/.test(this.searchTimestamp)) {
-        var roundedTimestamp = parseInt(this.searchTimestamp);
-      } else {
-        var roundedTimestamp = string_to_nanos(this.searchTimestamp);
-      }
-      var closestTimestamp = this.findClosestTimestamp(roundedTimestamp);
-      this.$store.dispatch('updateTimelineTime', parseInt(closestTimestamp));
-    },
-    findClosestTimestamp(roundedTimestamp) {
-      return this.mergedTimeline.timeline.reduce(function(prev, curr) {
-        return (Math.abs(curr-roundedTimestamp) < Math.abs(prev-roundedTimestamp) ? curr : prev);
-      });
-    },
-    updateTagsAndErrors() {
-      if (this.tagFiles) {
-        this.tags = this.updateTags();
-      }
-      if (this.errorFiles) {
-        this.errorTimestamps = this.updateErrorTimestamps();
-      }
-    },
   },
   components: {
     'timeline': Timeline,
@@ -745,6 +721,7 @@ export default {
     'videoview': VideoView,
     'draggable-div': DraggableDiv,
     'md-icon-option': MdIconOption,
+    'searchbar': Searchbar,
   },
 };
 </script>
@@ -924,6 +901,7 @@ export default {
   color: rgba(0,0,0,0.54);
   font-size: 12px;
   font-family: inherit;
+  cursor: text;
 }
 
 .minimized-timeline-content .minimized-timeline {
@@ -947,5 +925,30 @@ export default {
   font-size: 15px;
   margin-bottom: 15px;
   cursor: help;
+}
+
+.timestamp-search-input {
+  outline: none;
+  border-width: 0 0 1px;
+  border-color: gray;
+  font-family: inherit;
+  color: #448aff;
+  font-size: 12px;
+  padding: 0;
+  letter-spacing: inherit;
+  width: 125px;
+}
+
+.timestamp-search-input:focus {
+  border-color: #448aff;
+}
+
+.timestamp-search-input.expanded {
+  font-size: 14px;
+  width: 150px;
+}
+
+.drop-search:hover {
+  background-color: #9af39f;
 }
 </style>

@@ -20,10 +20,13 @@
         v-for="transition in timelineTransitions"
         :key="transition.type"
         :startPos="transition.startPos"
+        :startTime="transition.startTime"
+        :endTime="transition.endTime"
         :width="transition.width"
         :color="transition.color"
         :overlap="transition.overlap"
         :tooltip="transition.tooltip"
+        :store="store"
       />
     </div>
     <svg
@@ -54,12 +57,13 @@
       />
       <line
         v-for="error in errorPositions"
-        :key="error"
-        :x1="`${error}%`"
-        :x2="`${error}%`"
+        :key="error.pos"
+        :x1="`${error.pos}%`"
+        :x2="`${error.pos}%`"
         y1="0"
         y2="18px"
         class="error"
+        @click="onErrorClick(error.ts)"
       />
     </svg>
   </div>
@@ -74,7 +78,7 @@ export default {
   components: {
     'transition-container': TransitionContainer,
   },
-  props: ["selectedIndex", "crop", "disabled"],
+  props: ["selectedIndex", "crop", "disabled", "store"],
   data() {
     return {
       pointHeight: 15,
@@ -82,7 +86,6 @@ export default {
     };
   },
   mixins: [TimelineMixin],
-  methods: {},
   computed: {
     timestamps() {
       if (this.timeline.length == 1) {
@@ -114,6 +117,9 @@ export default {
 .timeline-container {
   width: 100%;
 }
+.container:hover {
+  cursor: pointer;
+}
 .tag-timeline {
   width: 100%;
   position: relative;
@@ -134,6 +140,7 @@ export default {
 }
 .error {
   stroke: rgb(255, 0, 0);
-  stroke-width: 2px;
+  stroke-width: 8px;
+  cursor: pointer;
 }
 </style>

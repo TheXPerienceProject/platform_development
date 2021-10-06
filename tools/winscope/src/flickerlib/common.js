@@ -66,6 +66,8 @@ const Matrix = require('flicker').com.android.server.wm.traces.common.layers.
     Transform.Matrix;
 const Transform = require('flicker').com.android.server.wm.traces.common.
     layers.Transform;
+const Display = require('flicker').com.android.server.wm.traces.common.
+    layers.Display;
 
 // Common
 const Size = require('flicker').com.android.server.wm.traces.common.Size;
@@ -85,6 +87,9 @@ const TagTrace = require('flicker').com.android.server.wm.traces.common.tags.Tag
 const Error = require('flicker').com.android.server.wm.traces.common.errors.Error;
 const ErrorState = require('flicker').com.android.server.wm.traces.common.errors.ErrorState;
 const ErrorTrace = require('flicker').com.android.server.wm.traces.common.errors.ErrorTrace;
+
+// Service
+const TaggingEngine = require('flicker').com.android.server.wm.traces.common.service.TaggingEngine;
 
 const EMPTY_BUFFER = new Buffer(0, 0, 0, 0);
 const EMPTY_COLOR = new Color(-1, -1, -1, 0);
@@ -236,6 +241,7 @@ export {
   LayersTrace,
   Transform,
   Matrix,
+  Display,
   // Tags
   Tag,
   TagState,
@@ -252,6 +258,8 @@ export {
   Rect,
   RectF,
   Region,
+  // Service
+  TaggingEngine,
   toSize,
   toBuffer,
   toColor,

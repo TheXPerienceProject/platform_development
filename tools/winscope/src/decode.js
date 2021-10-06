@@ -306,7 +306,7 @@ const FILE_DECODERS = {
     decoder: protoDecoder,
     decoderParams: {
       type: FILE_TYPES.ACCESSIBILITY_TRACE,
-      protoType: AccessibilityTraceMessage,
+      objTypeProto: AccessibilityTraceMessage,
       transform: transform_accessibility_trace,
       timeline: true,
     },
@@ -316,7 +316,7 @@ const FILE_DECODERS = {
     decoder: protoDecoder,
     decoderParams: {
       type: FILE_TYPES.WINDOW_MANAGER_TRACE,
-      protoType: WmTraceMessage,
+      objTypeProto: WmTraceMessage,
       transform: WindowManagerTrace.fromProto,
       timeline: true,
     },
@@ -327,7 +327,7 @@ const FILE_DECODERS = {
     decoderParams: {
       type: FILE_TYPES.SURFACE_FLINGER_TRACE,
       mime: 'application/octet-stream',
-      protoType: SfTraceMessage,
+      objTypeProto: SfTraceMessage,
       transform: SurfaceFlingerTrace.fromProto,
       timeline: true,
     },
@@ -338,7 +338,7 @@ const FILE_DECODERS = {
     decoderParams: {
       type: FILE_TYPES.WAYLAND_TRACE,
       mime: 'application/octet-stream',
-      protoType: WaylandTraceMessage,
+      objTypeProto: WaylandTraceMessage,
       transform: transform_wayland_trace,
       timeline: true,
     },
@@ -349,8 +349,8 @@ const FILE_DECODERS = {
     decoderParams: {
       type: FILE_TYPES.SURFACE_FLINGER_DUMP,
       mime: 'application/octet-stream',
-      protoType: SfDumpMessage,
-      transform: SurfaceFlingerDump.fromProto,
+      objTypeProto: [SfDumpMessage, SfTraceMessage],
+      transform: [SurfaceFlingerDump.fromProto, SurfaceFlingerTrace.fromProto],
       timeline: true,
     },
   },
@@ -360,7 +360,7 @@ const FILE_DECODERS = {
     decoderParams: {
       type: FILE_TYPES.WINDOW_MANAGER_DUMP,
       mime: 'application/octet-stream',
-      protoType: WmDumpMessage,
+      objTypeProto: WmDumpMessage,
       transform: WindowManagerDump.fromProto,
       timeline: true,
     },
@@ -371,7 +371,7 @@ const FILE_DECODERS = {
     decoderParams: {
       type: FILE_TYPES.WAYLAND_DUMP,
       mime: 'application/octet-stream',
-      protoType: WaylandDumpMessage,
+      objTypeProto: WaylandDumpMessage,
       transform: transform_wl_outputstate,
       timeline: true,
     },
@@ -391,7 +391,7 @@ const FILE_DECODERS = {
     decoderParams: {
       type: FILE_TYPES.TRANSACTIONS_TRACE,
       mime: 'application/octet-stream',
-      protoType: SfTransactionTraceMessage,
+      objTypeProto: SfTransactionTraceMessage,
       transform: transform_transaction_trace,
       timeline: true,
     },
@@ -402,7 +402,7 @@ const FILE_DECODERS = {
     decoderParams: {
       type: FILE_TYPES.PROTO_LOG,
       mime: 'application/octet-stream',
-      protoType: ProtoLogMessage,
+      objTypeProto: ProtoLogMessage,
       transform: transformProtolog,
       timeline: true,
     },
@@ -413,7 +413,7 @@ const FILE_DECODERS = {
     decoderParams: {
       type: FILE_TYPES.SYSTEM_UI,
       mime: 'application/octet-stream',
-      protoType: SystemUiTraceMessage,
+      objTypeProto: SystemUiTraceMessage,
       transform: transform_sysui_trace,
       timeline: true,
     },
@@ -424,7 +424,7 @@ const FILE_DECODERS = {
     decoderParams: {
       type: FILE_TYPES.LAUNCHER,
       mime: 'application/octet-stream',
-      protoType: LauncherTraceMessage,
+      objTypeProto: LauncherTraceMessage,
       transform: transform_launcher_trace,
       timeline: true,
     },
@@ -435,7 +435,7 @@ const FILE_DECODERS = {
     decoderParams: {
       type: FILE_TYPES.IME_TRACE_CLIENTS,
       mime: 'application/octet-stream',
-      protoType: InputMethodClientsTraceMessage,
+      objTypeProto: InputMethodClientsTraceMessage,
       transform: transform_ime_trace_clients,
       timeline: true,
     },
@@ -446,7 +446,7 @@ const FILE_DECODERS = {
     decoderParams: {
       type: FILE_TYPES.IME_TRACE_SERVICE,
       mime: 'application/octet-stream',
-      protoType: InputMethodServiceTraceMessage,
+      objTypeProto: InputMethodServiceTraceMessage,
       transform: transform_ime_trace_service,
       timeline: true,
     },
@@ -457,7 +457,7 @@ const FILE_DECODERS = {
     decoderParams: {
       type: FILE_TYPES.IME_TRACE_MANAGERSERVICE,
       mime: 'application/octet-stream',
-      protoType: InputMethodManagerServiceTraceMessage,
+      objTypeProto: InputMethodManagerServiceTraceMessage,
       transform: transform_ime_trace_managerservice,
       timeline: true,
     },
@@ -467,7 +467,7 @@ const FILE_DECODERS = {
     decoder: protoDecoder,
     decoderParams: {
       type: FILE_TYPES.TAG_TRACE,
-      protoType: TagTraceMessage,
+      objTypeProto: TagTraceMessage,
       transform: TagTrace.fromProto,
       timeline: true,
     },
@@ -477,7 +477,7 @@ const FILE_DECODERS = {
     decoder: protoDecoder,
     decoderParams: {
       type: FILE_TYPES.ERROR_TRACE,
-      protoType: ErrorTraceMessage,
+      objTypeProto: ErrorTraceMessage,
       transform: ErrorTrace.fromProto,
       timeline: true,
     },
@@ -523,15 +523,45 @@ function modifyProtoFields(protoObj, displayDefaults) {
 }
 
 function decodeAndTransformProto(buffer, params, displayDefaults) {
-  const decoded = params.protoType.decode(buffer);
-  modifyProtoFields(decoded, displayDefaults);
-  const transformed = params.transform(decoded);
-
-  return transformed;
+  var objTypesProto = [];
+  var transforms = [];
+  if (!Array.isArray(params.objTypeProto)) {
+    objTypesProto = [params.objTypeProto];
+    transforms = [params.transform];
+  } else {
+    objTypesProto = params.objTypeProto;
+    transforms = params.transform;
+  }
+  // each trace or dump may have different processors, for example, until S, SF dumps
+  // returne a list of layers and winscope built a [LayerTraceEntry] from them.
+  // From S onwards, returns a LayerTrace object, iterating over multiple items allows
+  // winscope to handle both the new and legacy formats
+  // TODO Refactor the decode.js code into a set of decoders to clean up the code
+  for (var x = 0; x < objTypesProto.length; x++) {
+    const objType = objTypesProto[x];
+    const transform = transforms[x];
+    try {
+      const decoded = objType.decode(buffer);
+      modifyProtoFields(decoded, displayDefaults);
+      const transformed = transform(decoded);
+      return transformed;
+    } catch (e) {
+      // check next parser
+    }
+  }
+  throw new UndetectableFileType('Unable to parse file');
 }
 
 function protoDecoder(buffer, params, fileName, store) {
   const transformed = decodeAndTransformProto(buffer, params, store.displayDefaults);
+
+  // add tagGenerationTrace to dataFile for WM/SF traces so tags can be generated
+  var tagGenerationTrace = null;
+  if (params.type === FILE_TYPES.WINDOW_MANAGER_TRACE ||
+    params.type === FILE_TYPES.SURFACE_FLINGER_TRACE) {
+    tagGenerationTrace = transformed;
+  }
+
   let data;
   if (params.timeline) {
     data = transformed.entries ?? transformed.children;
@@ -539,7 +569,15 @@ function protoDecoder(buffer, params, fileName, store) {
     data = [transformed];
   }
   const blobUrl = URL.createObjectURL(new Blob([buffer], {type: params.mime}));
-  return dataFile(fileName, data.map((x) => x.timestamp), data, blobUrl, params.type);
+
+  return dataFile(
+    fileName,
+    data.map((x) => x.timestamp),
+    data,
+    blobUrl,
+    params.type,
+    tagGenerationTrace
+  );
 }
 
 function videoDecoder(buffer, params, fileName, store) {
@@ -548,7 +586,7 @@ function videoDecoder(buffer, params, fileName, store) {
   return dataFile(fileName, timeline, blobUrl, blobUrl, params.type);
 }
 
-function dataFile(filename, timeline, data, blobUrl, type) {
+function dataFile(filename, timeline, data, blobUrl, type, tagGenerationTrace = null) {
   return {
     filename: filename,
     // Object is frozen for performance reasons
@@ -556,6 +594,7 @@ function dataFile(filename, timeline, data, blobUrl, type) {
     timeline: Object.freeze(timeline),
     data: data,
     blobUrl: blobUrl,
+    tagGenerationTrace: tagGenerationTrace,
     type: type,
     selectedIndex: 0,
     destroy() {
@@ -656,4 +695,17 @@ function detectAndDecode(buffer, fileName, store) {
  */
 class UndetectableFileType extends Error { }
 
-export {detectAndDecode, decodeAndTransformProto, FILE_TYPES, TRACE_INFO, TRACE_TYPES, DUMP_TYPES, DUMP_INFO, FILE_DECODERS, FILE_ICONS, UndetectableFileType};
+export {
+  dataFile,
+  detectAndDecode,
+  decodeAndTransformProto,
+  TagTraceMessage,
+  FILE_TYPES,
+  TRACE_INFO,
+  TRACE_TYPES,
+  DUMP_TYPES,
+  DUMP_INFO,
+  FILE_DECODERS,
+  FILE_ICONS,
+  UndetectableFileType
+};
