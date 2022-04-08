@@ -112,6 +112,7 @@ JSON_TO_BP = {
     'RuntimeLibs': 'runtime_libs',
     'Required': 'required',
     'Filename': 'filename',
+    'CrateName': 'crate_name',
     'Prebuilt': 'prebuilt',
 }
 
@@ -414,20 +415,29 @@ def convert_json_host_data_to_bp(mod, install_dir):
       mod: JSON definition of the module
       install_dir: installation directory of the host snapshot
     """
+    rust_proc_macro = mod.pop('RustProcMacro', False)
     prop = convert_json_data_to_bp_prop(mod, install_dir)
     if 'prebuilt' in prop:
         return
-    prop['host_supported'] = True
-    prop['device_supported'] = False
+
+    if not rust_proc_macro:
+        prop['host_supported'] = True
+        prop['device_supported'] = False
+        prop['stl'] = 'none'
+
     prop['prefer'] = True
-    prop['stl'] = 'none'
     ## Move install file to host source file
     prop['target'] = dict()
     prop['target']['host'] = dict()
     prop['target']['host']['srcs'] = [prop['filename']]
     del prop['filename']
 
-    bp = 'cc_prebuilt_binary {\n' + gen_bp_prop(prop, INDENT) + '}\n\n'
+    mod_type = 'cc_prebuilt_binary'
+
+    if rust_proc_macro:
+        mod_type = 'rust_prebuilt_proc_macro'
+
+    bp = mod_type + ' {\n' + gen_bp_prop(prop, INDENT) + '}\n\n'
     return bp
 
 def gen_host_bp_file(install_dir):
