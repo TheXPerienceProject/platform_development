@@ -719,7 +719,7 @@ def check_module_usage(install_dir, ninja_binary, image, ninja_file, goals,
                 used_modules.add(name)
 
     with open(output, 'w') as f:
-        f.write('%s_SNAPSHOT_MODULES := \\\n' % image.upper())
+        f.write('%s_SNAPSHOT_MODULES += \\\n' % image.upper())
         for m in sorted(used_modules):
             f.write('  %s \\\n' % m)
 
