@@ -34,6 +34,9 @@
         >
           <md-icon>save_alt</md-icon>
         </md-button>
+        <md-button @click="takeScreenshot" class="md-icon-button">
+          <md-icon>camera_alt</md-icon>
+        </md-button>
       </md-card-header>
       <AccessibilityTraceView
         v-if="showInAccessibilityTraceView(file) && isShowFileType(file.type)"
@@ -56,6 +59,14 @@
         :presentTags="presentTags"
         :presentErrors="presentErrors"
         ref="view"
+      />
+      <ImeTraceView
+          v-else-if="showInImeTraceView(file) && isShowFileType(file.type)"
+          :store="store"
+          :file="file"
+          :presentTags="presentTags"
+          :presentErrors="presentErrors"
+          ref="view"
       />
       <transactionsviewlegacy
         v-else-if="isTransactionsLegacy(file) && isShowFileType(file.type)"
@@ -88,12 +99,14 @@ import TraceView from '@/TraceView.vue';
 import AccessibilityTraceView from '@/AccessibilityTraceView.vue';
 import WindowManagerTraceView from '@/WindowManagerTraceView.vue';
 import SurfaceFlingerTraceView from '@/SurfaceFlingerTraceView.vue';
+import ImeTraceView from '@/ImeTraceView';
 import TransactionsViewLegacy from '@/TransactionsViewLegacy.vue';
 import LogView from '@/LogView.vue';
 import FileType from '@/mixins/FileType.js';
 import FlatCard from '@/components/FlatCard.vue';
 
 import {TRACE_ICONS} from '@/decode.js';
+import html2canvas from 'html2canvas';
 
 export default {
   name: 'dataview',
@@ -112,7 +125,7 @@ export default {
         return true;
       } else {
         for (let i = 0; i < component.$children.length; i++) {
-          var child = component.$children[i];
+          const child = component.$children[i];
           if (this.depthFirstSearchArrowUp(child)) {
             return true;
           }
@@ -126,10 +139,10 @@ export default {
     depthFirstSearchArrowDown(component) {
       if (component.arrowDown) {
         component.arrowDown();
-        return true
+        return true;
       } else {
         for (let i = 0; i < component.$children.length; i++) {
-          var child = component.$children[i];
+          const child = component.$children[i];
           if (this.depthFirstSearchArrowDown(child)) {
             return true;
           }
@@ -139,8 +152,8 @@ export default {
     },
     arrowUp() {
       for (let i = 0; i < this.$children.length; i++) {
-        var child = this.$children[i];
-        let done = this.depthFirstSearchArrowUp(child);
+        const child = this.$children[i];
+        const done = this.depthFirstSearchArrowUp(child);
         if (done) {
           return true;
         }
@@ -149,8 +162,8 @@ export default {
     },
     arrowDown() {
       for (let i = 0; i < this.$children.length; i++) {
-        var child = this.$children[i];
-        let done = this.depthFirstSearchArrowDown(child);
+        const child = this.$children[i];
+        const done = this.depthFirstSearchArrowDown(child);
         if (done) {
           return true;
         }
@@ -165,8 +178,8 @@ export default {
     /** Filter data view files by current show settings */
     updateShowFileTypes() {
       this.store.showFileTypes = this.dataViewFiles
-        .filter((file) => file.show)
-        .map(file => file.type);
+          .filter((file) => file.show)
+          .map((file) => file.type);
     },
     /** Expand or collapse data view */
     toggleView() {
@@ -175,7 +188,24 @@ export default {
     },
     /** Check if data view file should be shown */
     isShowFileType(type) {
-      return this.store.showFileTypes.find(fileType => fileType===type);
+      return this.store.showFileTypes.find((fileType) => fileType===type);
+    },
+    takeScreenshot() {
+      html2canvas(this.$el)
+          .then((canvas) => {
+            const uri = canvas.toDataURL();
+            const filename = 'Winscope-' + this.file.type + '-Screenshot.png';
+            const link = document.createElement('a');
+            if (typeof link.download === 'string') {
+              link.href = uri;
+              link.download = filename;
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+            } else {
+              window.open(uri);
+            }
+          });
     },
   },
   props: ['store', 'file', 'presentTags', 'presentErrors', 'dataViewFiles'],
@@ -188,6 +218,7 @@ export default {
     AccessibilityTraceView,
     WindowManagerTraceView,
     SurfaceFlingerTraceView,
+    ImeTraceView,
   },
 };
 </script>
