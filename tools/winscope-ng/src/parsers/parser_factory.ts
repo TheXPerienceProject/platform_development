@@ -20,6 +20,7 @@ import {ParserInputMethodManagerService} from "./parser_input_method_manager_ser
 import {ParserInputMethodService} from "./parser_input_method_service";
 import {ParserProtoLog} from "./parser_protolog";
 import {ParserScreenRecording} from "./parser_screen_recording";
+import {ParserScreenRecordingLegacy} from "./parser_screen_recording_legacy";
 import {ParserSurfaceFlinger} from "./parser_surface_flinger";
 import {ParserTransactions} from "./parser_transactions";
 import {ParserWindowManager} from "./parser_window_manager";
@@ -33,6 +34,7 @@ class ParserFactory {
     ParserInputMethodService,
     ParserProtoLog,
     ParserScreenRecording,
+    ParserScreenRecordingLegacy,
     ParserSurfaceFlinger,
     ParserTransactions,
     ParserWindowManager,
@@ -41,6 +43,7 @@ class ParserFactory {
 
   async createParsers(traces: Blob[]): Promise<Parser[]> {
     const parsers: Parser[] = [];
+    const completedParserTypes: any[] = [];
 
     for (const [index, trace] of traces.entries()) {
       console.log(`Loading trace #${index}`);
@@ -48,9 +51,15 @@ class ParserFactory {
         try {
           const parser = new ParserType(trace);
           await parser.parse();
-          parsers.push(parser);
-          console.log(`Successfully loaded trace with parser type ${ParserType.name}`);
-          break;
+          if (completedParserTypes.includes(ParserType)) {
+            console.log(`Already successfully loaded a trace with parser type ${ParserType.name}`);
+            break;
+          } else {
+            parsers.push(parser);
+            completedParserTypes.push(ParserType);
+            console.log(`Successfully loaded trace with parser type ${ParserType.name}`);
+            break;
+          }
         }
         catch(error) {
           console.log(`Failed to load trace with parser type ${ParserType.name}`);

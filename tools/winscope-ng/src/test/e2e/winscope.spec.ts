@@ -14,15 +14,15 @@
  * limitations under the License.
  */
 import {browser, element, by} from "protractor";
-import {TestUtils} from "../test_utils";
+import {E2eTestUtils} from "./utils";
 
 describe("winscope", () => {
   beforeAll(() => {
-    browser.get("file://" + TestUtils.getProductionIndexHtmlPath());
+    browser.get("file://" + E2eTestUtils.getProductionIndexHtmlPath());
   }),
 
   it("has title", () => {
-    const title = element(by.css("#title"));
+    const title = element(by.css("#app-title"));
     expect(title.getText()).toContain("Winscope");
   });
 });
