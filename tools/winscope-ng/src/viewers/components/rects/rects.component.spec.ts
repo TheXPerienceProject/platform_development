@@ -14,15 +14,15 @@
  * limitations under the License.
  */
 import { CommonModule } from "@angular/common";
-import { Component , ViewChild } from "@angular/core";
+import { Component, ViewChild } from "@angular/core";
 import { ComponentFixture, TestBed } from "@angular/core/testing";
-import { RectsComponent } from "./rects.component";
+import { RectsComponent } from "viewers/components/rects/rects.component";
 import { MatCheckboxModule } from "@angular/material/checkbox";
 import { MatCardModule } from "@angular/material/card";
 import { MatRadioModule } from "@angular/material/radio";
 import { MatSliderModule } from "@angular/material/slider";
 import { CUSTOM_ELEMENTS_SCHEMA } from "@angular/core";
-import { Rectangle } from "./viewer_surface_flinger/ui_data";
+import { Rectangle } from "viewers/viewer_surface_flinger/ui_data";
 
 describe("RectsComponent", () => {
   let component: TestHostComponent;
@@ -61,16 +61,16 @@ describe("RectsComponent", () => {
   });
 
   it("check that layer separation slider causes view to change", () => {
-    const slider = htmlElement.querySelector("mat-slider");
-    spyOn(component.rectsComponent.canvasGraphics, "updateLayerSeparation");
+    const slider = htmlElement.querySelector(".spacing-slider");
+    spyOn(component.rectsComponent, "updateLayerSeparation");
     slider?.dispatchEvent(new MouseEvent("mousedown"));
     fixture.detectChanges();
-    expect(component.rectsComponent.canvasGraphics.updateLayerSeparation).toHaveBeenCalled();
+    expect(component.rectsComponent.updateLayerSeparation).toHaveBeenCalled();
   });
 
   it("check that rects canvas is rendered", () => {
     fixture.detectChanges();
-    const rectsCanvas = htmlElement.querySelector("#rects-canvas");
+    const rectsCanvas = htmlElement.querySelector(".rects-canvas");
     expect(rectsCanvas).toBeTruthy();
   });
 
@@ -97,6 +97,7 @@ describe("RectsComponent", () => {
         ref: null,
         id: 12345,
         displayId: 0,
+        isVirtual: false
       }
     ]);
     spyOn(component.rectsComponent, "drawRects").and.callThrough();

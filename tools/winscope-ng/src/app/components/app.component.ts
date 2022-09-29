@@ -28,41 +28,61 @@ import { Viewer } from "viewers/viewer";
 @Component({
   selector: "app-root",
   template: `
-    <div id="app-title">
-      <span>Winscope Viewer 2.0</span>
+    <mat-toolbar class="app-toolbar">
+      <span id="app-title">Winscope</span>
         <button mat-raised-button *ngIf="dataLoaded" (click)="clearData()">Back to Home</button>
         <button mat-raised-button *ngIf="dataLoaded" (click)="toggleTimestamp()">Start/End Timestamp</button>
-        <mat-slider
-          *ngIf="dataLoaded"
-          step="1"
-          min="0"
-          [max]="this.allTimestamps.length-1"
-          aria-label="units"
-          [value]="currentTimestampIndex"
-          (input)="updateCurrentTimestamp($event)"
-          class="time-slider"
-        ></mat-slider>
+    </mat-toolbar>
+
+    <div class="welcome-info" *ngIf="!dataLoaded">
+      <span>Welcome to Winscope. Please select source to view traces.</span>
     </div>
 
     <div *ngIf="!dataLoaded" fxLayout="row wrap" fxLayoutGap="10px grid" class="card-grid">
       <mat-card class="homepage-card" id="collect-traces-card">
-        <collect-traces [(traceCoordinator)]="traceCoordinator" (dataLoadedChange)="onDataLoadedChange($event)"[store]="store"></collect-traces>
+        <collect-traces [traceCoordinator]="traceCoordinator" (dataLoadedChange)="onDataLoadedChange($event)"[store]="store"></collect-traces>
       </mat-card>
       <mat-card class="homepage-card" id="upload-traces-card">
-        <upload-traces [(traceCoordinator)]="traceCoordinator" (dataLoadedChange)="onDataLoadedChange($event)"></upload-traces>
+        <upload-traces [traceCoordinator]="traceCoordinator" (dataLoadedChange)="onDataLoadedChange($event)"></upload-traces>
       </mat-card>
-    </div>
-
-    <div id="timescrub">
-    </div>
-
-    <div id="timestamps">
     </div>
 
     <div id="viewers" [class]="showViewers()">
     </div>
+
+    <div id="timescrub">
+      <mat-slider
+        *ngIf="dataLoaded"
+        step="1"
+        min="0"
+        [max]="this.allTimestamps.length-1"
+        aria-label="units"
+        [value]="currentTimestampIndex"
+        (input)="updateCurrentTimestamp($event)"
+        class="time-slider"
+      ></mat-slider>
+    </div>
+    <div id="timestamps">
+    </div>
   `,
-  styles: [".time-slider {width: 100%}"],
+  styles: [
+    `
+      .time-slider {width: 100%}
+      .upload-new-btn {float: right}
+      .app-toolbar {
+        border-bottom: 1px solid var(--default-border);
+        box-shadow: none;
+        background-color: rgba(1, 1, 1, 0);
+        height: 56px;
+      }
+
+      .welcome-info {
+        text-align: center;
+        font: inherit;
+        padding: 40px;
+      }
+    `
+  ],
   encapsulation: ViewEncapsulation.None
 })
 export class AppComponent {
@@ -128,7 +148,7 @@ export class AppComponent {
 
       const traceCardContent = traceCard.querySelector(".trace-card-content")!;
       const view = viewer.getView();
-      (view as any).showTrace = (traceView as any).showTrace;
+      (view as any).store = this.store;
       traceCardContent.appendChild(view);
     });
   }

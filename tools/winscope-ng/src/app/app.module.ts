@@ -17,6 +17,8 @@ import { MatRadioModule } from "@angular/material/radio";
 import { BrowserAnimationsModule } from "@angular/platform-browser/animations";
 import { HttpClientModule } from "@angular/common/http";
 import { MatSliderModule } from "@angular/material/slider";
+import { MatTooltipModule } from "@angular/material/tooltip";
+import { MatToolbarModule } from "@angular/material/toolbar";
 
 import { AppComponent } from "./components/app.component";
 import { ViewerWindowManagerComponent } from "viewers/viewer_window_manager/viewer_window_manager.component";
@@ -26,11 +28,17 @@ import { AdbProxyComponent } from "./components/adb_proxy.component";
 import { WebAdbComponent } from "./components/web_adb.component";
 import { TraceConfigComponent } from "./components/trace_config.component";
 import { UploadTracesComponent } from "./components/upload_traces.component";
-import { HierarchyComponent } from "viewers/hierarchy.component";
-import { PropertiesComponent } from "viewers/properties.component";
-import { RectsComponent } from "viewers/rects.component";
+import { HierarchyComponent } from "viewers/components/hierarchy.component";
+import { PropertiesComponent } from "viewers/components/properties.component";
+import { RectsComponent } from "viewers/components/rects/rects.component";
 import { TraceViewHeaderComponent } from "./components/trace_view_header.component";
 import { TraceViewComponent } from "./components/trace_view.component";
+import { TreeComponent } from "viewers/components/tree.component";
+import { TreeNodeComponent } from "viewers/components/tree_node.component";
+import { TreeNodeDataViewComponent } from "viewers/components/tree_node_data_view.component";
+import { TreeNodePropertiesDataViewComponent } from "viewers/components/tree_node_properties_data_view.component";
+import { PropertyGroupsComponent } from "viewers/components/property_groups.component";
+import { TransformMatrixComponent } from "viewers/components/transform_matrix.component";
 
 @NgModule({
   declarations: [
@@ -46,7 +54,13 @@ import { TraceViewComponent } from "./components/trace_view.component";
     PropertiesComponent,
     RectsComponent,
     TraceViewHeaderComponent,
-    TraceViewComponent
+    TraceViewComponent,
+    TreeComponent,
+    TreeNodeComponent,
+    TreeNodeDataViewComponent,
+    TreeNodePropertiesDataViewComponent,
+    PropertyGroupsComponent,
+    TransformMatrixComponent
   ],
   imports: [
     BrowserModule,
@@ -67,7 +81,9 @@ import { TraceViewComponent } from "./components/trace_view.component";
     BrowserAnimationsModule,
     HttpClientModule,
     MatSliderModule,
-    MatRadioModule
+    MatRadioModule,
+    MatTooltipModule,
+    MatToolbarModule
   ],
   bootstrap: [AppComponent]
 })
