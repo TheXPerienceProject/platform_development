@@ -16,7 +16,7 @@
 import { Component, Input, Inject, ElementRef } from "@angular/core";
 import { UserOptions } from "viewers/common/user_options";
 import { PersistentStore } from "common/persistent_store";
-import { Tree, diffClass, isHighlighted } from "viewers/common/tree_utils";
+import { TreeUtils, HierarchyTreeNode, UiTreeNode } from "viewers/common/tree_utils";
 import { nodeStyles } from "viewers/components/styles/node.styles";
 import { ViewerEvents } from "viewers/common/viewer_events";
 import { TraceType } from "common/trace/trace_type";
@@ -25,7 +25,7 @@ import { TraceType } from "common/trace/trace_type";
   selector: "hierarchy-view",
   template: `
     <mat-card-header class="view-header">
-      <mat-card-title class="title-filter">
+      <div class="title-filter">
         <span class="hierarchy-title">Hierarchy</span>
         <mat-form-field class="filter-field">
           <mat-label>Filter...</mat-label>
@@ -36,7 +36,7 @@ import { TraceType } from "common/trace/trace_type";
             name="filter"
           />
         </mat-form-field>
-      </mat-card-title>
+      </div>
       <div class="view-controls">
         <mat-checkbox
           *ngFor="let option of objectKeys(userOptions)"
@@ -56,7 +56,7 @@ import { TraceType } from "common/trace/trace_type";
           [isPinned]="true"
           [isInPinnedSection]="true"
           (pinNodeChange)="pinnedItemChange($event)"
-          (click)="onPinnedNodeClick($event, pinnedItem.id, pinnedItem)"
+          (click)="onPinnedNodeClick($event, pinnedItem)"
         ></tree-node>
       </div>
     </mat-card-header>
@@ -84,6 +84,7 @@ import { TraceType } from "common/trace/trace_type";
   styles: [
     `
       .view-header {
+        position: relative;
         display: block;
         width: 100%;
         min-height: 3.75rem;
@@ -96,6 +97,7 @@ import { TraceType } from "common/trace/trace_type";
         display: flex;
         align-items: center;
         width: 100%;
+        margin-bottom: 12px;
       }
 
       .hierarchy-title {
@@ -114,7 +116,7 @@ import { TraceType } from "common/trace/trace_type";
         display: inline-block;
         font-size: 12px;
         font-weight: normal;
-        margin-left: 5px
+        margin-left: 5px;
       }
 
       .hierarchy-content {
@@ -145,13 +147,13 @@ import { TraceType } from "common/trace/trace_type";
 export class HierarchyComponent {
   objectKeys = Object.keys;
   filterString = "";
-  diffClass = diffClass;
-  isHighlighted = isHighlighted;
+  diffClass = TreeUtils.diffClass;
+  isHighlighted = TreeUtils.isHighlighted;
 
-  @Input() tree!: Tree | null;
+  @Input() tree!: HierarchyTreeNode | null;
   @Input() dependencies: Array<TraceType> = [];
   @Input() highlightedItems: Array<string> = [];
-  @Input() pinnedItems: Array<Tree> = [];
+  @Input() pinnedItems: Array<HierarchyTreeNode> = [];
   @Input() store!: PersistentStore;
   @Input() userOptions: UserOptions = {};
 
@@ -159,27 +161,27 @@ export class HierarchyComponent {
     @Inject(ElementRef) private elementRef: ElementRef,
   ) {}
 
-  isFlattened() {
+  public isFlattened() {
     return this.userOptions["flat"]?.enabled;
   }
 
-  maxHierarchyHeight() {
+  public maxHierarchyHeight() {
     const headerHeight = this.elementRef.nativeElement.querySelector(".view-header").clientHeight;
     return {
       height: `${800 - headerHeight}px`
     };
   }
 
-  onPinnedNodeClick(event: MouseEvent, pinnedItemId: string, pinnedItem: Tree) {
+  public onPinnedNodeClick(event: MouseEvent, pinnedItem: HierarchyTreeNode) {
     event.preventDefault();
     if (window.getSelection()?.type === "range") {
       return;
     }
-    this.highlightedItemChange(`${pinnedItemId}`);
+    if (pinnedItem.id) this.highlightedItemChange(`${pinnedItem.id}`);
     this.selectedTreeChange(pinnedItem);
   }
 
-  updateTree() {
+  public updateTree() {
     const event: CustomEvent = new CustomEvent(
       ViewerEvents.HierarchyUserOptionsChange,
       {
@@ -189,7 +191,7 @@ export class HierarchyComponent {
     this.elementRef.nativeElement.dispatchEvent(event);
   }
 
-  filterTree() {
+  public filterTree() {
     const event: CustomEvent = new CustomEvent(
       ViewerEvents.HierarchyFilterChange,
       {
@@ -199,7 +201,7 @@ export class HierarchyComponent {
     this.elementRef.nativeElement.dispatchEvent(event);
   }
 
-  highlightedItemChange(newId: string) {
+  public highlightedItemChange(newId: string) {
     const event: CustomEvent = new CustomEvent(
       ViewerEvents.HighlightedChange,
       {
@@ -209,7 +211,10 @@ export class HierarchyComponent {
     this.elementRef.nativeElement.dispatchEvent(event);
   }
 
-  selectedTreeChange(item: Tree) {
+  public selectedTreeChange(item: UiTreeNode) {
+    if (!(item instanceof HierarchyTreeNode)) {
+      return;
+    }
     const event: CustomEvent = new CustomEvent(
       ViewerEvents.SelectedTreeChange,
       {
@@ -219,7 +224,10 @@ export class HierarchyComponent {
     this.elementRef.nativeElement.dispatchEvent(event);
   }
 
-  pinnedItemChange(item: Tree) {
+  public pinnedItemChange(item: UiTreeNode) {
+    if (!(item instanceof HierarchyTreeNode)) {
+      return;
+    }
     const event: CustomEvent = new CustomEvent(
       ViewerEvents.HierarchyPinnedChange,
       {

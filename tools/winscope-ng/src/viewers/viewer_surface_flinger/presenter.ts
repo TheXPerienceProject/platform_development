@@ -1,3 +1,4 @@
+
 /*
  * Copyright (C) 2022 The Android Open Source Project
  *
@@ -13,12 +14,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { Rectangle, RectMatrix, RectTransform, UiData } from "viewers/viewer_surface_flinger/ui_data";
+import { UiData } from "./ui_data";
+import { Rectangle, RectMatrix, RectTransform } from "viewers/common/rectangle";
 import { TraceType } from "common/trace/trace_type";
 import { UserOptions } from "viewers/common/user_options";
-import { getFilter, FilterType, Tree, TreeSummary } from "viewers/common/tree_utils";
+import { TreeUtils, FilterType, HierarchyTreeNode, PropertiesTreeNode } from "viewers/common/tree_utils";
 import { TreeGenerator } from "viewers/common/tree_generator";
 import { TreeTransformer } from "viewers/common/tree_transformer";
+import { Layer, LayerTraceEntry } from "common/trace/flickerlib/common";
 
 type NotifyViewCallbackType = (uiData: UiData) => void;
 
@@ -29,7 +32,7 @@ export class Presenter {
     this.notifyViewCallback(this.uiData);
   }
 
-  public updatePinnedItems(pinnedItem: Tree) {
+  public updatePinnedItems(pinnedItem: HierarchyTreeNode) {
     const pinnedId = `${pinnedItem.id}`;
     if (this.pinnedItems.map(item => `${item.id}`).includes(pinnedId)) {
       this.pinnedItems = this.pinnedItems.filter(pinned => `${pinned.id}` != pinnedId);
@@ -45,7 +48,7 @@ export class Presenter {
     if (this.highlightedItems.includes(id)) {
       this.highlightedItems = this.highlightedItems.filter(hl => hl != id);
     } else {
-      this.highlightedItems = []; //if multi-select implemented, remove this line
+      this.highlightedItems = []; //if multi-select surfaces implemented, remove this line
       this.highlightedItems.push(id);
     }
     this.uiData.highlightedItems = this.highlightedItems;
@@ -60,7 +63,7 @@ export class Presenter {
   }
 
   public filterHierarchyTree(filterString: string) {
-    this.hierarchyFilter = getFilter(filterString);
+    this.hierarchyFilter = TreeUtils.makeNodeFilter(filterString);
     this.uiData.tree = this.generateTree();
     this.notifyViewCallback(this.uiData);
   }
@@ -72,67 +75,36 @@ export class Presenter {
   }
 
   public filterPropertiesTree(filterString: string) {
-    this.propertiesFilter = getFilter(filterString);
+    this.propertiesFilter = TreeUtils.makeNodeFilter(filterString);
     this.updateSelectedTreeUiData();
   }
 
-  public newPropertiesTree(selectedItem: any) {
-    this.selectedTree = selectedItem;
+  public newPropertiesTree(selectedItem: HierarchyTreeNode) {
+    this.selectedHierarchyTree = selectedItem;
     this.updateSelectedTreeUiData();
   }
 
-  private updateSelectedTreeUiData() {
-    this.uiData.selectedTree = this.getTreeWithTransformedProperties(this.selectedTree);
-    this.uiData.selectedTreeSummary = this.getSelectedTreeSummary(this.selectedTree);
+  public notifyCurrentTraceEntries(entries: Map<TraceType, [any, any]>) {
+    this.uiData = new UiData();
+    this.uiData.hierarchyUserOptions = this.hierarchyUserOptions;
+    this.uiData.propertiesUserOptions = this.propertiesUserOptions;
+
+    const sfEntries = entries.get(TraceType.SURFACE_FLINGER);
+    if (sfEntries) {
+      [this.entry, this.previousEntry] = sfEntries;
+      if (this.entry) {
+        this.uiData.highlightedItems = this.highlightedItems;
+        this.uiData.rects = this.generateRects();
+        this.uiData.hasVirtualDisplays = this.uiData.rects.filter(rect => rect.isVirtual).length > 0;
+        this.uiData.displayIds = this.displayIds;
+        this.uiData.tree = this.generateTree();
+      }
+    }
     this.notifyViewCallback(this.uiData);
   }
 
-  private getSelectedTreeSummary(layer: Tree): TreeSummary | undefined {
-    const summary = [];
-
-    if (layer?.visibilityReason?.length > 0) {
-      let reason = "";
-      if (Array.isArray(layer.visibilityReason)) {
-        reason = layer.visibilityReason.join(", ");
-      } else {
-        reason = layer.visibilityReason;
-      }
-
-      summary.push({key: "Invisible due to", value: reason});
-    }
-
-    if (layer?.occludedBy?.length > 0) {
-      summary.push({key: "Occluded by", value: layer.occludedBy.map((it:Tree) => it.id).join(", ")});
-    }
-
-    if (layer?.partiallyOccludedBy?.length > 0) {
-      summary.push({
-        key: "Partially occluded by",
-        value: layer.partiallyOccludedBy.map((it:Tree) => it.id).join(", "),
-      });
-    }
-
-    if (layer?.coveredBy?.length > 0) {
-      summary.push({key: "Covered by", value: layer.coveredBy.map((it:Tree) => it.id).join(", ")});
-    }
-
-    if (summary.length === 0) {
-      return undefined;
-    }
-
-    return summary;
-  }
-
-  public notifyCurrentTraceEntries(entries: Map<TraceType, any>) {
-    this.uiData = new UiData();
-    const entry = entries.get(TraceType.SURFACE_FLINGER)[0];
-    this.previousEntry = entries.get(TraceType.SURFACE_FLINGER)[1];
-
-    this.uiData = new UiData();
-
-    this.uiData.highlightedItems = this.highlightedItems;
-
-    const displayRects = entry.displays.map((display: any) => {
+  private generateRects(): Rectangle[] {
+    const displayRects = this.entry.displays.map((display: any) => {
       const rect = display.layerStackSpace;
       rect.label = display.name;
       rect.id = display.id;
@@ -142,7 +114,7 @@ export class Presenter {
       return rect;
     }) ?? [];
     this.displayIds = [];
-    const rects = entry.visibleLayers
+    const rects = this.entry.visibleLayers
       .sort((a: any, b: any) => (b.absoluteZ > a.absoluteZ) ? 1 : (a.absoluteZ == b.absoluteZ) ? 0 : -1)
       .map((it: any) => {
         const rect = it.rect;
@@ -152,14 +124,14 @@ export class Presenter {
         }
         return rect;
       });
-    this.uiData.rects = this.rectsToUiData(rects.concat(displayRects));
-    this.uiData.displayIds = this.displayIds;
+    return this.rectsToUiData(rects.concat(displayRects));
+  }
 
-    this.entry = entry;
-    this.uiData.hierarchyUserOptions = this.hierarchyUserOptions;
-    this.uiData.propertiesUserOptions = this.propertiesUserOptions;
-    this.uiData.tree = this.generateTree();
-
+  private updateSelectedTreeUiData() {
+    if (this.selectedHierarchyTree) {
+      this.uiData.propertiesTree = this.getTreeWithTransformedProperties(this.selectedHierarchyTree);
+      this.uiData.selectedLayer = this.selectedLayer;
+    }
     this.notifyViewCallback(this.uiData);
   }
 
@@ -173,13 +145,13 @@ export class Presenter {
       .setIsSimplifyNames(this.hierarchyUserOptions["simplifyNames"]?.enabled)
       .setIsFlatView(this.hierarchyUserOptions["flat"]?.enabled)
       .withUniqueNodeId();
-    let tree: Tree;
+    let tree: HierarchyTreeNode | null;
     if (!this.hierarchyUserOptions["showDiff"]?.enabled) {
       tree = generator.generateTree();
     } else {
       tree = generator.compareWith(this.previousEntry)
         .withModifiedCheck()
-        .generateFinalDiffTree();
+        .generateFinalTreeWithDiff();
     }
     this.pinnedItems = generator.getPinnedItems();
     this.uiData.pinnedItems = this.pinnedItems;
@@ -222,7 +194,8 @@ export class Presenter {
         ref: rect.ref,
         id: rect.id ?? rect.ref.id,
         displayId: rect.displayId ?? rect.ref.stackId,
-        isVirtual: rect.isVirtual ?? false
+        isVirtual: rect.isVirtual ?? false,
+        isClickable: !(rect.isDisplay ?? false)
       };
       uiRects.push(newRect);
     });
@@ -237,28 +210,31 @@ export class Presenter {
     }
   }
 
-  private getTreeWithTransformedProperties(selectedTree: Tree) {
+  private getTreeWithTransformedProperties(selectedTree: HierarchyTreeNode): PropertiesTreeNode {
     const transformer = new TreeTransformer(selectedTree, this.propertiesFilter)
+      .showOnlyProtoDump()
       .setIsShowDefaults(this.propertiesUserOptions["showDefaults"]?.enabled)
       .setIsShowDiff(this.propertiesUserOptions["showDiff"]?.enabled)
       .setTransformerOptions({skip: selectedTree.skip})
+      .setProperties(this.entry)
       .setDiffProperties(this.previousEntry);
-    this.uiData.selectedLayer = transformer.getOriginalLayer(this.entry, selectedTree.stableId);
+    this.selectedLayer = transformer.getOriginalFlickerItem(this.entry, selectedTree.stableId);
     const transformedTree = transformer.transform();
     return transformedTree;
   }
 
   private readonly notifyViewCallback: NotifyViewCallbackType;
   private uiData: UiData;
-  private hierarchyFilter: FilterType = getFilter("");
-  private propertiesFilter: FilterType = getFilter("");
+  private hierarchyFilter: FilterType = TreeUtils.makeNodeFilter("");
+  private propertiesFilter: FilterType = TreeUtils.makeNodeFilter("");
   private highlightedItems: Array<string> = [];
   private displayIds: Array<number> = [];
-  private pinnedItems: Array<Tree> = [];
+  private pinnedItems: Array<HierarchyTreeNode> = [];
   private pinnedIds: Array<string> = [];
-  private selectedTree: any = null;
-  private previousEntry: any = null;
-  private entry: any = null;
+  private selectedHierarchyTree: HierarchyTreeNode | null = null;
+  private selectedLayer: LayerTraceEntry | Layer | null = null;
+  private previousEntry: LayerTraceEntry | null = null;
+  private entry: LayerTraceEntry | null = null;
   private hierarchyUserOptions: UserOptions = {
     showDiff: {
       name: "Show diff",

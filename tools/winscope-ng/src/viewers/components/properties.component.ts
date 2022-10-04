@@ -16,14 +16,13 @@
 import { Component, Input, Inject, ElementRef } from "@angular/core";
 import { UserOptions } from "viewers/common/user_options";
 import { ViewerEvents } from "viewers/common/viewer_events";
-import { PropertiesTree, TreeSummary, Terminal } from "viewers/common/tree_utils";
-import { Layer } from "common/trace/flickerlib/common";
+import { PropertiesTreeNode, Terminal, TreeNodeTrace } from "viewers/common/tree_utils";
 
 @Component({
   selector: "properties-view",
   template: `
     <mat-card-header class="view-header">
-      <mat-card-title class="title-filter">
+      <div class="title-filter">
         <span class="properties-title">Properties</span>
         <mat-form-field class="filter-field">
           <mat-label>Filter...</mat-label>
@@ -34,7 +33,7 @@ import { Layer } from "common/trace/flickerlib/common";
             name="filter"
           />
         </mat-form-field>
-      </mat-card-title>
+      </div>
       <div class="view-controls">
         <mat-checkbox
           *ngFor="let option of objectKeys(userOptions)"
@@ -44,22 +43,21 @@ import { Layer } from "common/trace/flickerlib/common";
           [matTooltip]="userOptions[option].tooltip ?? ''"
         >{{userOptions[option].name}}</mat-checkbox>
       </div>
-      <div *ngIf="objectKeys(selectedLayer).length > 0 && propertyGroups" class="element-summary">
+      <div *ngIf="itemIsSelected() && propertyGroups" class="element-summary">
         <property-groups
-          [item]="selectedLayer"
-          [summary]="summary"
+          [item]="selectedFlickerItem"
         ></property-groups>
       </div>
     </mat-card-header>
     <mat-card-content class="properties-content" [style]="maxPropertiesHeight()">
+      <span *ngIf="objectKeys(propertiesTree).length > 0" class="properties-title"> Properties - Proto Dump </span>
       <div class="tree-wrapper">
         <tree-view
           class="tree-view"
-          [item]="selectedTree"
+          [item]="propertiesTree"
           [showNode]="showNode"
           [isLeaf]="isLeaf"
-          *ngIf="objectKeys(selectedTree).length > 0"
-          [isPropertiesTree]="true"
+          *ngIf="objectKeys(propertiesTree).length > 0"
           [isAlwaysCollapsed]="true"
         ></tree-view>
       </div>
@@ -80,6 +78,7 @@ import { Layer } from "common/trace/flickerlib/common";
         display: flex;
         align-items: center;
         width: 100%;
+        margin-bottom: 12px;
       }
 
       .properties-title {
@@ -90,14 +89,14 @@ import { Layer } from "common/trace/flickerlib/common";
         font-size: 16px;
         transform: scale(0.7);
         right: 0px;
-        position: absolute
+        position: absolute;
       }
 
       .view-controls {
         display: inline-block;
         font-size: 12px;
         font-weight: normal;
-        margin-left: 5px
+        margin-left: 5px;
       }
 
       .properties-content{
@@ -135,23 +134,22 @@ export class PropertiesComponent {
   filterString = "";
 
   @Input() userOptions: UserOptions = {};
-  @Input() selectedTree: PropertiesTree = {};
-  @Input() selectedLayer: Layer = {};
+  @Input() propertiesTree: PropertiesTreeNode = {};
+  @Input() selectedFlickerItem: TreeNodeTrace | null = null;
   @Input() propertyGroups = false;
-  @Input() summary?: TreeSummary = [];
 
   constructor(
     @Inject(ElementRef) private elementRef: ElementRef,
   ) {}
 
-  maxPropertiesHeight() {
+  public maxPropertiesHeight() {
     const headerHeight = this.elementRef.nativeElement.querySelector(".view-header").clientHeight;
     return {
       height: `${800 - headerHeight}px`
     };
   }
 
-  filterTree() {
+  public filterTree() {
     const event: CustomEvent = new CustomEvent(
       ViewerEvents.PropertiesFilterChange,
       {
@@ -161,7 +159,7 @@ export class PropertiesComponent {
     this.elementRef.nativeElement.dispatchEvent(event);
   }
 
-  updateTree() {
+  public updateTree() {
     const event: CustomEvent = new CustomEvent(
       ViewerEvents.PropertiesUserOptionsChange,
       {
@@ -171,14 +169,18 @@ export class PropertiesComponent {
     this.elementRef.nativeElement.dispatchEvent(event);
   }
 
-  showNode(item: any) {
+  public showNode(item: any) {
     return !(item instanceof Terminal)
     && !(item.name instanceof Terminal)
     && !(item.propertyKey instanceof Terminal);
   }
 
-  isLeaf(item: any) {
+  public isLeaf(item: any) {
     return !item.children || item.children.length === 0
           || item.children.filter((c: any) => !(c instanceof Terminal)).length === 0;
+  }
+
+  public itemIsSelected() {
+    return this.selectedFlickerItem && Object.keys(this.selectedFlickerItem).length > 0;
   }
 }

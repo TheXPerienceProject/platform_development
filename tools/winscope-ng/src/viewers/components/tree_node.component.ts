@@ -15,7 +15,7 @@
  */
 import { Component, Input, Output, EventEmitter } from "@angular/core";
 import { nodeInnerItemStyles } from "viewers/components/styles/node.styles";
-import { PropertiesTree, Tree, DiffType } from "viewers/common/tree_utils";
+import { TreeUtils, UiTreeNode, DiffType, HierarchyTreeNode } from "viewers/common/tree_utils";
 
 @Component({
   selector: "tree-node",
@@ -50,11 +50,11 @@ import { PropertiesTree, Tree, DiffType } from "viewers/common/tree_utils";
     <div class="description">
       <tree-node-data-view
         [item]="item"
-        *ngIf="!isPropertiesTreeNode"
+        *ngIf="!isPropertiesTreeNode()"
       ></tree-node-data-view>
       <tree-node-properties-data-view
         [item]="item"
-        *ngIf="isPropertiesTreeNode"
+        *ngIf="isPropertiesTreeNode()"
       ></tree-node-properties-data-view>
     </div>
 
@@ -76,19 +76,18 @@ import { PropertiesTree, Tree, DiffType } from "viewers/common/tree_utils";
 })
 
 export class TreeNodeComponent {
-  @Input() item!: Tree | PropertiesTree;
+  @Input() item!: UiTreeNode;
   @Input() isLeaf?: boolean;
   @Input() flattened?: boolean;
   @Input() isCollapsed?: boolean;
   @Input() hasChildren?: boolean = false;
   @Input() isPinned?: boolean = false;
   @Input() isInPinnedSection?: boolean = false;
-  @Input() isPropertiesTreeNode?: boolean;
   @Input() isAlwaysCollapsed?: boolean;
 
   @Output() toggleTreeChange = new EventEmitter<void>();
   @Output() expandTreeChange = new EventEmitter<boolean>();
-  @Output() pinNodeChange = new EventEmitter<Tree>();
+  @Output() pinNodeChange = new EventEmitter<UiTreeNode>();
 
   collapseDiffClass = "";
 
@@ -96,36 +95,40 @@ export class TreeNodeComponent {
     this.collapseDiffClass = this.updateCollapseDiffClass();
   }
 
-  showPinNodeIcon() {
-    return (!this.isPropertiesTreeNode && this.item.kind !== "entry") ?? false;
+  public isPropertiesTreeNode() {
+    return !(this.item instanceof HierarchyTreeNode);
   }
 
-  toggleTree(event: MouseEvent) {
+  public showPinNodeIcon() {
+    return (!this.isPropertiesTreeNode() && !TreeUtils.isParentNode(this.item.kind ?? "")) ?? false;
+  }
+
+  public toggleTree(event: MouseEvent) {
     if (!this.isAlwaysCollapsed) {
       event.stopPropagation();
       this.toggleTreeChange.emit();
     }
   }
 
-  showChevron() {
+  public showChevron() {
     return !this.isLeaf && !this.flattened && !this.isInPinnedSection;
   }
 
-  showLeafNodeIcon() {
+  public showLeafNodeIcon() {
     return !this.showChevron() && !this.isInPinnedSection;
   }
 
-  expandTree(event: MouseEvent) {
+  public expandTree(event: MouseEvent) {
     event.stopPropagation();
     this.expandTreeChange.emit();
   }
 
-  pinNode(event: MouseEvent) {
+  public pinNode(event: MouseEvent) {
     event.stopPropagation();
     this.pinNodeChange.emit(this.item);
   }
 
-  updateCollapseDiffClass() {
+  public updateCollapseDiffClass() {
     if (this.isCollapsed) {
       return "";
     }
@@ -145,7 +148,7 @@ export class TreeNodeComponent {
     return DiffType.MODIFIED;
   }
 
-  getAllDiffTypesOfChildren(item: Tree | PropertiesTree) {
+  private getAllDiffTypesOfChildren(item: UiTreeNode) {
     if (!item.children) {
       return new Set();
     }

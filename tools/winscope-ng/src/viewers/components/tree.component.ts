@@ -16,9 +16,8 @@
 import { Component, Inject, Input, Output, ElementRef, EventEmitter } from "@angular/core";
 import { PersistentStore } from "common/persistent_store";
 import { nodeStyles, treeNodeDataViewStyles } from "viewers/components/styles/node.styles";
-import { Tree, diffClass, isHighlighted, PropertiesTree, Terminal } from "viewers/common/tree_utils";
+import { TreeUtils, UiTreeNode, HierarchyTreeNode } from "viewers/common/tree_utils";
 import { TraceType } from "common/trace/trace_type";
-import { TreeNodePropertiesDataViewComponent } from "./tree_node_properties_data_view.component";
 
 @Component({
   selector: "tree-view",
@@ -40,7 +39,6 @@ import { TreeNodePropertiesDataViewComponent } from "./tree_node_properties_data
           [flattened]="isFlattened"
           [isLeaf]="isLeaf(this.item)"
           [isCollapsed]="isAlwaysCollapsed ?? isCollapsed()"
-          [isPropertiesTreeNode]="isPropertiesTree"
           [hasChildren]="hasChildren()"
           [isPinned]="isPinned()"
           (toggleTreeChange)="toggleTree()"
@@ -59,7 +57,6 @@ import { TreeNodePropertiesDataViewComponent } from "./tree_node_properties_data
                 [isLeaf]="isLeaf"
                 [dependencies]="dependencies"
                 [isFlattened]="isFlattened"
-                [isPropertiesTree]="isPropertiesTree"
                 [isShaded]="!isShaded"
                 [useGlobalCollapsedState]="useGlobalCollapsedState"
                 [initialDepth]="initialDepth + 1"
@@ -80,27 +77,26 @@ import { TreeNodePropertiesDataViewComponent } from "./tree_node_properties_data
 })
 
 export class TreeComponent {
-  diffClass = diffClass;
-  isHighlighted = isHighlighted;
+  diffClass = TreeUtils.diffClass;
+  isHighlighted = TreeUtils.isHighlighted;
 
-  @Input() item!: Tree | PropertiesTree | Terminal;
+  @Input() item!: UiTreeNode;
   @Input() dependencies: Array<TraceType> = [];
   @Input() store!: PersistentStore;
   @Input() isFlattened? = false;
   @Input() isShaded? = false;
   @Input() initialDepth = 0;
   @Input() highlightedItems: Array<string> = [];
-  @Input() pinnedItems?: Array<Tree> = [];
+  @Input() pinnedItems?: Array<HierarchyTreeNode> = [];
   @Input() itemsClickable?: boolean;
   @Input() useGlobalCollapsedState?: boolean;
-  @Input() isPropertiesTree?: boolean;
   @Input() isAlwaysCollapsed?: boolean;
   @Input() showNode: (item?: any) => boolean = () => true;
   @Input() isLeaf: (item: any) => boolean = (item: any) => !item.children || item.children.length === 0;
 
   @Output() highlightedItemChange = new EventEmitter<string>();
-  @Output() selectedTreeChange = new EventEmitter<Tree>();
-  @Output() pinnedItemChange = new EventEmitter<Tree>();
+  @Output() selectedTreeChange = new EventEmitter<UiTreeNode>();
+  @Output() pinnedItemChange = new EventEmitter<UiTreeNode>();
   @Output() hoverStart = new EventEmitter<void>();
   @Output() hoverEnd = new EventEmitter<void>();
 
@@ -127,7 +123,7 @@ export class TreeComponent {
   }
 
   ngOnChanges() {
-    if (isHighlighted(this.item, this.highlightedItems)) {
+    if (this.item instanceof HierarchyTreeNode && TreeUtils.isHighlighted(this.item, this.highlightedItems)) {
       this.selectedTreeChange.emit(this.item);
     }
   }
@@ -138,7 +134,7 @@ export class TreeComponent {
     this.nodeElement?.removeEventListener("mouseleave", this.nodeMouseLeaveEventListener);
   }
 
-  onNodeClick(event: MouseEvent) {
+  public onNodeClick(event: MouseEvent) {
     event.preventDefault();
     if (window.getSelection()?.type === "range") {
       return;
@@ -153,7 +149,7 @@ export class TreeComponent {
     }
   }
 
-  nodeOffsetStyle() {
+  public nodeOffsetStyle() {
     const offset = this.levelOffset * (this.initialDepth) + "px";
 
     return {
@@ -162,75 +158,69 @@ export class TreeComponent {
     };
   }
 
-  updateHighlightedItems() {
-    if (this.item && this.item.id) {
-      this.highlightedItemChange.emit(`${this.item.id}`);
-    } else if (!this.item.id) {
-      this.selectedTreeChange.emit(this.item);
+  private updateHighlightedItems() {
+    if (this.item instanceof HierarchyTreeNode) {
+      if (this.item && this.item.id) {
+        this.highlightedItemChange.emit(`${this.item.id}`);
+      } else if (!this.item.id) {
+        this.selectedTreeChange.emit(this.item);
+      }
     }
   }
 
-  isPinned() {
-    if (this.item) {
-      return this.pinnedItems?.map((item: Tree) => `${item.id}`).includes(`${this.item.id}`);
+  public isPinned() {
+    if (this.item instanceof HierarchyTreeNode) {
+      return this.pinnedItems?.map(item => `${item.id}`).includes(`${this.item.id}`);
     }
     return false;
   }
 
-  propagateNewHighlightedItem(newId: string) {
+  public propagateNewHighlightedItem(newId: string) {
     this.highlightedItemChange.emit(newId);
   }
 
-  propagateNewPinnedItem(newPinnedItem: Tree) {
+  public propagateNewPinnedItem(newPinnedItem: UiTreeNode) {
     this.pinnedItemChange.emit(newPinnedItem);
   }
 
-  propagateNewSelectedTree(newTree: Tree) {
+  public propagateNewSelectedTree(newTree: UiTreeNode) {
     this.selectedTreeChange.emit(newTree);
   }
 
-  isClickable() {
+  public isClickable() {
     return !this.isLeaf(this.item) || this.itemsClickable;
   }
 
-  toggleTree() {
+  public toggleTree() {
     this.setCollapseValue(!this.isCollapsed());
   }
 
-  expandTree() {
+  public expandTree() {
     this.setCollapseValue(true);
   }
 
-  isCollapsed() {
+  public isCollapsed() {
     if (this.isAlwaysCollapsed || this.isLeaf(this.item)) {
       return true;
     }
 
     if (this.useGlobalCollapsedState) {
-      return this.store.getFromStore(`collapsedState.item.${this.dependencies}.${this.item.id}`)==="true"
+      return this.store.getFromStore(`collapsedState.item.${this.dependencies}.${this.item.stableId}`)==="true"
         ?? this.isCollapsedByDefault;
     }
     return this.localCollapsedState;
   }
 
-  children() {
-    return this.item.children;
+  public children(): UiTreeNode[] {
+    return this.item.children ?? [];
   }
 
-  hasChildren() {
-    const isParentEntryInFlatView = this.item.kind === "entry" && this.isFlattened;
+  public hasChildren() {
+    const isParentEntryInFlatView = TreeUtils.isParentNode(this.item.kind ?? "") && this.isFlattened;
     return (!this.isFlattened || isParentEntryInFlatView) && !this.isLeaf(this.item);
   }
 
-  setCollapseValue(isCollapsed: boolean) {
-    if (this.useGlobalCollapsedState) {
-      this.store.addToStore(`collapsedState.item.${this.dependencies}.${this.item.id}`, `${isCollapsed}`);
-    } else {
-      this.localCollapsedState = isCollapsed;
-    }
-  }
-
-  childrenIndentation() {
+  public childrenIndentation() {
     if (this.isFlattened) {
       return {
         marginLeft: "0px",
@@ -248,7 +238,15 @@ export class TreeComponent {
     }
   }
 
-  nodeMouseDownEventListener = (event:MouseEvent) => {
+  private setCollapseValue(isCollapsed: boolean) {
+    if (this.useGlobalCollapsedState) {
+      this.store.addToStore(`collapsedState.item.${this.dependencies}.${this.item.stableId}`, `${isCollapsed}`);
+    } else {
+      this.localCollapsedState = isCollapsed;
+    }
+  }
+
+  private nodeMouseDownEventListener = (event:MouseEvent) => {
     if (event.detail > 1) {
       event.preventDefault();
       return false;
@@ -256,12 +254,12 @@ export class TreeComponent {
     return true;
   };
 
-  nodeMouseEnterEventListener = () => {
+  private nodeMouseEnterEventListener = () => {
     this.nodeHover = true;
     this.hoverStart.emit();
   };
 
-  nodeMouseLeaveEventListener = () => {
+  private nodeMouseLeaveEventListener = () => {
     this.nodeHover = false;
     this.hoverEnd.emit();
   };

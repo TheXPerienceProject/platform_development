@@ -13,12 +13,88 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { Layer, BaseLayerTraceEntry } from "common/trace/flickerlib/common";
 
-export type FilterType = (item: Tree | null) => boolean;
-export type Tree = Layer | BaseLayerTraceEntry;
-export type PropertiesTree = any; //TODO: make specific
-export type TreeSummary = Array<{key: string, value: string}>
+import Chip from "./chip";
+
+export type FilterType = (item: HierarchyTreeNode | PropertiesTreeNode | null) => boolean;
+
+export type UiTreeNode = HierarchyTreeNode | PropertiesTreeNode;
+
+export interface TreeNodeTrace {
+  parent: TreeNodeTrace|undefined;
+  children: TreeNodeTrace[];
+  name: string;
+  kind: string;
+  stableId: string;
+  displays?: TreeNodeTrace[];
+  windowStates?: TreeNodeTrace[];
+  shortName?: string;
+  type?: string;
+  id?: string | number;
+  layerId?: number;
+  displayId?: number;
+  stackId?: number;
+  isVisible?: boolean;
+  isMissing?: boolean;
+  hwcCompositionType?: number;
+  zOrderRelativeOfId?: number;
+  isRootLayer?: boolean;
+  chips?: Chip[];
+  diffType?: string;
+  skip?: any;
+  equals?: any;
+  obj?: any;
+  get?: any;
+  proto?: any;
+}
+
+export class HierarchyTreeNode {
+  constructor(
+    public name: string,
+    public kind: string,
+    public stableId: string,
+    children?: HierarchyTreeNode[]
+  ) {
+    this.children = children ?? [];
+  }
+
+  children: HierarchyTreeNode[];
+  shortName?: string;
+  type?: string;
+  id?: string | number;
+  layerId?: number;
+  displayId?: number;
+  stackId?: number;
+  isVisible?: boolean;
+  isMissing?: boolean;
+  hwcCompositionType?: number;
+  zOrderRelativeOfId?: number;
+  zOrderRelativeOf?: any;
+  zOrderRelativeParentOf?: any;
+  isRootLayer?: boolean;
+  showInFilteredView?: boolean;
+  showInOnlyVisibleView?: boolean;
+  simplifyNames?: boolean;
+  chips?: Chip[] = [];
+  diffType?: string;
+  skip?: any;
+}
+
+export interface PropertiesDump {
+  [key: string]: any;
+}
+
+export interface PropertiesTreeNode {
+  properties?: any;
+  kind?: string;
+  stableId?: string;
+  children?: PropertiesTreeNode[];
+  propertyKey?: string | Terminal | null;
+  propertyValue?: string | Terminal | null;
+  name?: string | Terminal;
+  diffType?: string;
+  combined?: boolean;
+} //TODO: make specific
 
 export const DiffType = {
   NONE: "none",
@@ -31,36 +107,74 @@ export const DiffType = {
 
 export class Terminal {}
 
-export function diffClass(item: Tree): string {
-  const diffType = item!.diffType;
-  return diffType ?? "";
-}
-
-export function isHighlighted(item: Tree, highlightedItems: Array<string>) {
-  return highlightedItems.includes(`${item.id}`);
-}
-
-export function getFilter(filterString: string): FilterType {
-  const filterStrings = filterString.split(",");
-  const positive: Tree | null[] = [];
-  const negative: Tree | null[] = [];
-  filterStrings.forEach((f) => {
-    f = f.trim();
-    if (f.startsWith("!")) {
-      const regex = new RegExp(f.substring(1), "i");
-      negative.push((s:any) => !regex.test(s));
-    } else {
-      const regex = new RegExp(f, "i");
-      positive.push((s:any) => regex.test(s));
+export class TreeUtils
+{
+  public static findDescendantNode(node: TreeNodeTrace, isTargetNode: FilterType): TreeNodeTrace|undefined {
+    if (isTargetNode(node)) {
+      return node;
     }
-  });
-  const filter = (item: any) => {
-    if (item) {
-      const apply = (f:any) => f(`${item.name}`);
-      return (positive.length === 0 || positive.some(apply)) &&
-        (negative.length === 0 || negative.every(apply));
+
+    for (const child of node.children) {
+      const target = this.findDescendantNode(child, isTargetNode);
+      if (target) {
+        return target;
+      }
     }
-    return false;
-  };
-  return filter;
+
+    return undefined;
+  }
+
+  public static findAncestorNode(node: TreeNodeTrace, isTargetNode: FilterType): TreeNodeTrace|undefined {
+    let ancestor = node.parent;
+
+    while (ancestor && !isTargetNode(ancestor)) {
+      ancestor = ancestor.parent;
+    }
+
+    return ancestor;
+  }
+
+  public static makeNodeFilter(filterString: string): FilterType {
+    const filterStrings = filterString.split(",");
+    const positive: any[] = [];
+    const negative: any[] = [];
+    filterStrings.forEach((f) => {
+      f = f.trim();
+      if (f.startsWith("!")) {
+        const regex = new RegExp(f.substring(1), "i");
+        negative.push((s: any) => !regex.test(s));
+      } else {
+        const regex = new RegExp(f, "i");
+        positive.push((s: any) => regex.test(s));
+      }
+    });
+    const filter = (item: any) => {
+      if (item) {
+        const apply = (f: any) => f(`${item.name}`);
+        return (positive.length === 0 || positive.some(apply)) &&
+          (negative.length === 0 || negative.every(apply));
+      }
+      return false;
+    };
+    return filter;
+  }
+
+  public static diffClass(item: UiTreeNode): string {
+    const diffType = item.diffType;
+    return diffType ?? "";
+  }
+
+  public static isHighlighted(item: UiTreeNode, highlightedItems: Array<string>) {
+    return item instanceof HierarchyTreeNode && highlightedItems.includes(`${item.id}`);
+  }
+
+  public static isVisibleNode(kind: string, type?: string) {
+    return kind === "WindowState" || kind === "Activity" || type?.includes("Layer");
+  }
+
+  public static isParentNode(kind: string) {
+    return this.PARENT_NODE_KINDS.includes(kind);
+  }
+
+  private static readonly PARENT_NODE_KINDS = ["entry", "WindowManagerState"];
 }

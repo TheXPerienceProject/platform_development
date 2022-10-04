@@ -14,9 +14,11 @@
  * limitations under the License.
  */
 import {
+  TreeUtils,
   FilterType,
-  Tree,
-  DiffType
+  TreeNodeTrace,
+  DiffType,
+  HierarchyTreeNode
 } from "./tree_utils";
 import ObjectFormatter from "common/trace/flickerlib/ObjectFormatter";
 import {
@@ -28,11 +30,9 @@ import {
   RELATIVE_Z_PARENT_CHIP
 } from "viewers/common/chip";
 
-type GetNodeIdCallbackType = (node: Tree | null) => number | null;
-type IsModifiedCallbackType = (newTree: Tree | null, oldTree: Tree | null) => boolean;
-interface IdNodeMap {
-  [key: string]: Tree
-}
+type GetNodeIdCallbackType = (node: TreeNodeTrace | null) => string | null;
+type IsModifiedCallbackType = (newTree: TreeNodeTrace | null, oldTree: TreeNodeTrace | null) => boolean;
+
 const HwcCompositionType = {
   CLIENT: 1,
   DEVICE: 2,
@@ -44,49 +44,49 @@ export class TreeGenerator {
   private isSimplifyNames = false;
   private isFlatView = false;
   private filter: FilterType;
-  private tree: Tree;
-  private diffWithTree: Tree | null = null;
+  private inputEntry: TreeNodeTrace;
+  private previousEntry: TreeNodeTrace | null = null;
   private getNodeId?: GetNodeIdCallbackType;
   private isModified?: IsModifiedCallbackType;
-  private newMapping: IdNodeMap | null = null;
-  private oldMapping: IdNodeMap | null = null;
+  private newMapping: Map<string, TreeNodeTrace> | null = null;
+  private oldMapping: Map<string, TreeNodeTrace> | null = null;
   private readonly pinnedIds: Array<string>;
-  private pinnedItems: Array<Tree> = [];
-  private relZParentIds: Array<number> = [];
-  private flattenedChildren: Array<Tree> = [];
+  private pinnedItems: Array<HierarchyTreeNode> = [];
+  private relZParentIds: Array<string> = [];
+  private flattenedChildren: Array<HierarchyTreeNode> = [];
 
-  constructor(tree: Tree, filter: FilterType, pinnedIds?: Array<string>) {
-    this.tree = tree;
+  constructor(inputEntry: TreeNodeTrace, filter: FilterType, pinnedIds?: Array<string>) {
+    this.inputEntry = inputEntry;
     this.filter = filter;
     this.pinnedIds = pinnedIds ?? [];
   }
 
-  public setIsOnlyVisibleView(enabled: boolean) {
+  public setIsOnlyVisibleView(enabled: boolean): TreeGenerator {
     this.isOnlyVisibleView = enabled;
     return this;
   }
 
-  public setIsSimplifyNames(enabled: boolean) {
+  public setIsSimplifyNames(enabled: boolean): TreeGenerator {
     this.isSimplifyNames = enabled;
     return this;
   }
 
-  public setIsFlatView(enabled: boolean) {
+  public setIsFlatView(enabled: boolean): TreeGenerator {
     this.isFlatView = enabled;
     return this;
   }
 
-  public generateTree(): Tree {
-    return this.getCustomisedTree(this.tree);
+  public generateTree(): HierarchyTreeNode | null {
+    return this.getCustomisedTree(this.inputEntry);
   }
 
-  public compareWith(tree: Tree | null): TreeGenerator {
-    this.diffWithTree = tree;
+  public compareWith(previousEntry: TreeNodeTrace | null): TreeGenerator {
+    this.previousEntry = previousEntry;
     return this;
   }
 
   public withUniqueNodeId(getNodeId?: GetNodeIdCallbackType): TreeGenerator {
-    this.getNodeId = (node: Tree | null) => {
+    this.getNodeId = (node: TreeNodeTrace | null) => {
       const id = getNodeId ? getNodeId(node) : this.defaultNodeIdCallback(node);
       if (id === null || id === undefined) {
         console.error("Null node ID for node", node);
@@ -102,17 +102,18 @@ export class TreeGenerator {
     return this;
   }
 
-  public generateFinalDiffTree(): Tree {
-    this.newMapping = this.generateIdToNodeMapping(this.tree);
-    this.oldMapping = this.diffWithTree ? this.generateIdToNodeMapping(this.diffWithTree) : null;
+  public generateFinalTreeWithDiff(): HierarchyTreeNode | null {
+    this.newMapping = this.generateIdToNodeMapping(this.inputEntry);
+    this.oldMapping = this.previousEntry ? this.generateIdToNodeMapping(this.previousEntry) : null;
 
-    const diffTrees = this.generateDiffTree(this.tree, this.diffWithTree, [], []);
+    const diffTrees = this.generateDiffTree(this.inputEntry, this.previousEntry, [], []);
 
-    let diffTree;
+    let diffTree: TreeNodeTrace;
     if (diffTrees.length > 1) {
       diffTree = {
         kind: "",
         name: "DiffTree",
+        parent: undefined,
         children: diffTrees,
         stableId: "DiffTree",
       };
@@ -122,26 +123,28 @@ export class TreeGenerator {
     return this.getCustomisedTree(diffTree);
   }
 
-  private getCustomisedTree(tree: Tree | null) {
+  private getCustomisedTree(tree: TreeNodeTrace | null): HierarchyTreeNode | null {
     if (!tree) return null;
-    tree = this.generateTreeWithUserOptions(tree, false);
-    tree = this.updateTreeWithRelZParentChips(tree);
+    let newTree = this.generateTreeWithUserOptions(tree, false);
+    if (!newTree) return null;
+    newTree = this.updateTreeWithRelZParentChips(newTree);
 
-    if (this.isFlatView && tree.children) {
-      this.flattenChildren(tree.children);
-      tree.children = this.flattenedChildren;
+    if (this.isFlatView && newTree.children) {
+      this.flattenChildren(newTree.children);
+      newTree.children = this.flattenedChildren;
     }
-    return Object.freeze(tree);
+    return Object.freeze(newTree);
   }
 
-  public getPinnedItems() {
+  public getPinnedItems(): Array<HierarchyTreeNode> {
     return this.pinnedItems;
   }
 
-  private flattenChildren(children: Array<Tree>): Tree {
+  private flattenChildren(children: Array<HierarchyTreeNode>) {
     for (let i = 0; i < children.length; i++) {
       const child = children[i];
-      const showInOnlyVisibleView = this.isOnlyVisibleView && child.isVisible;
+      const childIsVisibleNode = child.isVisible && TreeUtils.isVisibleNode(child.kind, child.type);
+      const showInOnlyVisibleView = this.isOnlyVisibleView && childIsVisibleNode;
       const passVisibleCheck = !this.isOnlyVisibleView || showInOnlyVisibleView;
       if (this.filterMatches(child) && passVisibleCheck) {
         this.flattenedChildren.push(child);
@@ -152,27 +155,26 @@ export class TreeGenerator {
     }
   }
 
-  private filterMatches(item: Tree | null): boolean {
+  private filterMatches(item: HierarchyTreeNode | null): boolean {
     return this.filter(item) ?? false;
   }
 
   private generateTreeWithUserOptions(
-    tree: Tree | null,
+    tree: TreeNodeTrace,
     parentFilterMatch: boolean
-  ): Tree | null {
-    return tree ? this.applyChecks(
+  ): HierarchyTreeNode | null {
+    return this.applyChecks(
       tree,
-      this.cloneNode(tree, true),
       parentFilterMatch
-    ) : null;
+    );
   }
 
-  private updateTreeWithRelZParentChips(tree: Tree): Tree {
+  private updateTreeWithRelZParentChips(tree: HierarchyTreeNode): HierarchyTreeNode {
     return this.applyRelZParentCheck(tree);
   }
 
-  private applyRelZParentCheck(tree: Tree) {
-    if (this.relZParentIds.includes(tree.id)) {
+  private applyRelZParentCheck(tree: HierarchyTreeNode) {
+    if (tree.id && tree.chips && this.relZParentIds.includes(`${tree.id}`)) {
       tree.chips.push(RELATIVE_Z_PARENT_CHIP);
     }
 
@@ -184,7 +186,7 @@ export class TreeGenerator {
     return tree;
   }
 
-  private addChips(tree: Tree) {
+  private addChips(tree: HierarchyTreeNode): HierarchyTreeNode {
     tree.chips = [];
     if (tree.hwcCompositionType == HwcCompositionType.CLIENT) {
       tree.chips.push(GPU_CHIP);
@@ -192,12 +194,17 @@ export class TreeGenerator {
                 tree.hwcCompositionType == HwcCompositionType.SOLID_COLOR)) {
       tree.chips.push(HWC_CHIP);
     }
-    if (tree.isVisible && tree.kind !== "entry") {
+    if (tree.isVisible && TreeUtils.isVisibleNode(tree.kind, tree.type)) {
       tree.chips.push(VISIBLE_CHIP);
     }
-    if (tree.zOrderRelativeOfId !== -1 && tree.kind !== "entry" && !tree.isRootLayer) {
+    if (
+      tree.zOrderRelativeOfId !== undefined
+      && tree.zOrderRelativeOfId !== -1
+      && !TreeUtils.isParentNode(tree.kind)
+      && !tree.isRootLayer
+    ) {
       tree.chips.push(RELATIVE_Z_CHIP);
-      this.relZParentIds.push(tree.zOrderRelativeOfId);
+      this.relZParentIds.push(`${tree.zOrderRelativeOfId}`);
     }
     if (tree.isMissing) {
       tree.chips.push(MISSING_LAYER);
@@ -206,19 +213,21 @@ export class TreeGenerator {
   }
 
   private applyChecks(
-    tree: Tree | null,
-    newTree: Tree | null,
+    tree: TreeNodeTrace,
     parentFilterMatch: boolean
-  ): Tree | null {
-    if (!tree || !newTree)  {
-      return null;
+  ): HierarchyTreeNode | null {
+    let newTree = this.getTreeNode(tree);
+
+    // add id field to tree if id does not exist (e.g. for WM traces)
+    if (!newTree?.id && newTree?.layerId) {
+      newTree.id = newTree.layerId;
     }
 
     // simplify names check
     newTree.simplifyNames = this.isSimplifyNames;
 
     // check item either matches filter, or has parents/children matching filter
-    if (tree.kind === "entry" || parentFilterMatch) {
+    if (TreeUtils.isParentNode(tree.kind) || parentFilterMatch) {
       newTree.showInFilteredView = true;
     } else {
       newTree.showInFilteredView = this.filterMatches(tree);
@@ -262,15 +271,15 @@ export class TreeGenerator {
     return newTree;
   }
 
-  private generateIdToNodeMapping(node: Tree, acc?: IdNodeMap): IdNodeMap {
-    acc = acc || {};
+  private generateIdToNodeMapping(node: TreeNodeTrace, acc?: Map<string, TreeNodeTrace>): Map<string, TreeNodeTrace> {
+    acc = acc || new Map<string, TreeNodeTrace>();
 
-    const nodeId = this.getNodeId!(node)!;
+    const nodeId: string = this.getNodeId!(node)!;
 
-    if (acc[nodeId]) {
+    if (acc.get(nodeId)) {
       throw new Error(`Duplicate node id '${nodeId}' detected...`);
     }
-    acc[nodeId] = node;
+    acc.set(nodeId, node);
 
     if (node.children) {
       for (const child of node.children) {
@@ -280,7 +289,7 @@ export class TreeGenerator {
     return acc;
   }
 
-  private cloneNode(node: Tree | null, postDiff = false): Tree | null {
+  private cloneDiffTreeNode(node: TreeNodeTrace | null): TreeNodeTrace | null {
     const clone = ObjectFormatter.cloneObject(node);
     if (node) {
       clone.children = node.children;
@@ -288,22 +297,41 @@ export class TreeGenerator {
       clone.kind = node.kind;
       clone.stableId = node.stableId;
       clone.shortName = node.shortName;
-      if ("chips" in node) {
+      if (node.chips) {
         clone.chips = node.chips.slice();
-      }
-      if (postDiff && "diffType" in node) {
-        clone.diffType = node.diffType;
       }
     }
     return clone;
   }
 
+  private getTreeNode(node: TreeNodeTrace): HierarchyTreeNode {
+    const clone = new HierarchyTreeNode(
+      node.name,
+      node.kind,
+      node.stableId,
+    );
+    if (node.shortName) clone.shortName = node.shortName;
+    if (node.type) clone.type = node.type;
+    if (node.id) clone.id = node.id;
+    if (node.layerId) clone.layerId = node.layerId;
+    if (node.isVisible) clone.isVisible = node.isVisible;
+    if (node.isMissing) clone.isMissing = node.isMissing;
+    if (node.hwcCompositionType) clone.hwcCompositionType = node.hwcCompositionType;
+    if (node.zOrderRelativeOfId) clone.zOrderRelativeOfId = node.zOrderRelativeOfId;
+    if (node.isRootLayer) clone.isRootLayer = node.isRootLayer;
+    if (node.chips) clone.chips = node.chips.slice();
+    if (node.diffType) clone.diffType = node.diffType;
+    if (node.skip) clone.skip = node.skip;
+
+    return clone;
+  }
+
   private generateDiffTree(
-    newTree: Tree | null,
-    oldTree: Tree | null,
-    newTreeSiblings: Array<Tree | null>,
-    oldTreeSiblings: Array<Tree | null>
-  ): Array<Tree | null> {
+    newTree: TreeNodeTrace | null,
+    oldTree: TreeNodeTrace | null,
+    newTreeSiblings: Array<TreeNodeTrace | null>,
+    oldTreeSiblings: Array<TreeNodeTrace | null>
+  ): Array<TreeNodeTrace> {
     const diffTrees = [];
     // NOTE: A null ID represents a non existent node.
     if (!this.getNodeId) {
@@ -317,24 +345,24 @@ export class TreeGenerator {
 
     if (newTree) {
       // Clone is required because trees are frozen objects — we can't modify the original tree object.
-      const diffTree = this.cloneNode(newTree)!;
+      const diffTree = this.cloneDiffTreeNode(newTree)!;
 
       // Default to no changes
       diffTree.diffType = DiffType.NONE;
 
-      if (newTree.kind !== "entry" && newId !== oldId) {
+      if (!TreeUtils.isParentNode(newTree.kind) && newId !== oldId) {
         // A move, addition, or deletion has occurred
-        let nextOldTree = null;
+        let nextOldTree: TreeNodeTrace | null = null;
 
         // Check if newTree has been added or moved
         if (newId && !oldTreeSiblingIds.includes(newId)) {
-          if (this.oldMapping && this.oldMapping[newId]) {
+          if (this.oldMapping && this.oldMapping.get(newId)) {
             // Objected existed in old tree, so DELETED_MOVE will be/has been flagged and added to the
             // diffTree when visiting it in the oldTree.
             diffTree.diffType = DiffType.ADDED_MOVE;
 
             // Switch out oldTree for new one to compare against
-            nextOldTree = this.oldMapping[newId];
+            nextOldTree = this.oldMapping.get(newId) ?? null;
           } else {
             diffTree.diffType = DiffType.ADDED;
 
@@ -345,9 +373,9 @@ export class TreeGenerator {
 
         // Check if oldTree has been deleted of moved
         if (oldId && oldTree && !newTreeSiblingIds.includes(oldId)) {
-          const deletedTreeDiff = this.cloneNode(oldTree)!;
+          const deletedTreeDiff = this.cloneDiffTreeNode(oldTree)!;
 
-          if (this.newMapping![oldId]) {
+          if (this.newMapping && this.newMapping.get(oldId)) {
             deletedTreeDiff.diffType = DiffType.DELETED_MOVE;
 
             // Stop comparing against oldTree, will be/has been
@@ -375,10 +403,10 @@ export class TreeGenerator {
     } else if (oldTree) {
       if (oldId && !newTreeSiblingIds.includes(oldId)) {
         // Deep clone oldTree omitting children field
-        const diffTree = this.cloneNode(oldTree)!;
+        const diffTree = this.cloneDiffTreeNode(oldTree)!;
 
         // newTree doesn't exist, oldTree has either been moved or deleted.
-        if (this.newMapping![oldId]) {
+        if (this.newMapping && this.newMapping.get(oldId)) {
           diffTree.diffType = DiffType.DELETED_MOVE;
         } else {
           diffTree.diffType = DiffType.DELETED;
@@ -394,39 +422,38 @@ export class TreeGenerator {
     return diffTrees;
   }
 
-  private visitChildren(newTree: Tree | null, oldTree: Tree | null) {
+  private visitChildren(newTree: TreeNodeTrace | null, oldTree: TreeNodeTrace | null): Array<TreeNodeTrace> {
     // Recursively traverse all children of new and old tree.
     const diffChildren = [];
-
-    if (!newTree) newTree = {};
-    if (!oldTree) oldTree = {};
-    const numOfChildren = Math.max(newTree.children?.length ?? 0, oldTree.children?.length ?? 0);
+    const numOfChildren = Math.max(newTree?.children?.length ?? 0, oldTree?.children?.length ?? 0);
     for (let i = 0; i < numOfChildren; i++) {
-      const newChild = newTree.children ? newTree.children[i] : null;
-      const oldChild = oldTree.children ? oldTree.children[i] : null;
+      const newChild = newTree?.children ? newTree.children[i] : null;
+      const oldChild = oldTree?.children ? oldTree.children[i] : null;
 
       const childDiffTrees = this.generateDiffTree(
         newChild, oldChild,
-        newTree.children ?? [], oldTree.children ?? [],
-      );
+        newTree?.children ?? [], oldTree?.children ?? [],
+      ).filter(tree => tree != null);
       diffChildren.push(...childDiffTrees);
     }
 
     return diffChildren;
   }
 
-  private defaultNodeIdCallback(node: Tree | null): number | null {
+  private defaultNodeIdCallback(node: TreeNodeTrace | null): string | null {
     return node ? node.stableId : null;
   }
 
-  private defaultModifiedCheck(newNode: Tree | null, oldNode: Tree | null): boolean {
+  private defaultModifiedCheck(newNode: TreeNodeTrace | null, oldNode: TreeNodeTrace | null): boolean {
     if (!newNode && !oldNode) {
       return false;
-    } else if (newNode && newNode.kind==="entry") {
+    } else if (newNode && TreeUtils.isParentNode(newNode.kind)) {
       return false;
     } else if ((newNode && !oldNode) || (!newNode && oldNode)) {
       return true;
+    } else if (newNode?.equals) {
+      return !newNode.equals(oldNode);
     }
-    return !newNode.equals(oldNode);
+    return false;
   }
 }

@@ -20,7 +20,7 @@ import {Parser} from "./parser";
 import {LayersTraceFileProto} from "./proto_types";
 
 class ParserSurfaceFlinger extends Parser {
-  constructor(trace: Blob) {
+  constructor(trace: File) {
     super(trace);
     this.realToElapsedTimeOffsetNs = undefined;
   }
@@ -59,7 +59,7 @@ class ParserSurfaceFlinger extends Parser {
     return undefined;
   }
 
-  override processDecodedEntry(entryProto: any): any {
+  override processDecodedEntry(entryProto: any): LayerTraceEntry {
     return LayerTraceEntry.fromProto(entryProto.layers.layers, entryProto.displays, entryProto.elapsedRealtimeNanos, entryProto.hwcBlob);
   }
 
