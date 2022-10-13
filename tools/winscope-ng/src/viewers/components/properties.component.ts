@@ -14,9 +14,10 @@
  * limitations under the License.
  */
 import { Component, Input, Inject, ElementRef } from "@angular/core";
+import { TraceTreeNode } from "common/trace/trace_tree_node";
 import { UserOptions } from "viewers/common/user_options";
 import { ViewerEvents } from "viewers/common/viewer_events";
-import { PropertiesTreeNode, Terminal, TreeNodeTrace } from "viewers/common/tree_utils";
+import { PropertiesTreeNode, Terminal} from "viewers/common/ui_tree_utils";
 
 @Component({
   selector: "properties-view",
@@ -50,7 +51,7 @@ import { PropertiesTreeNode, Terminal, TreeNodeTrace } from "viewers/common/tree
       </div>
     </mat-card-header>
     <mat-card-content class="properties-content" [style]="maxPropertiesHeight()">
-      <span *ngIf="objectKeys(propertiesTree).length > 0" class="properties-title"> Properties - Proto Dump </span>
+      <span *ngIf="objectKeys(propertiesTree).length > 0 && isProtoDump" class="properties-title"> Properties - Proto Dump </span>
       <div class="tree-wrapper">
         <tree-view
           class="tree-view"
@@ -135,8 +136,9 @@ export class PropertiesComponent {
 
   @Input() userOptions: UserOptions = {};
   @Input() propertiesTree: PropertiesTreeNode = {};
-  @Input() selectedFlickerItem: TreeNodeTrace | null = null;
+  @Input() selectedFlickerItem: TraceTreeNode | null = null;
   @Input() propertyGroups = false;
+  @Input() isProtoDump = false;
 
   constructor(
     @Inject(ElementRef) private elementRef: ElementRef,

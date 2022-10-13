@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { HierarchyTreeNode } from "viewers/common/tree_utils";
+import { HierarchyTreeNode } from "viewers/common/ui_tree_utils";
 import Chip from "viewers/common/chip";
 
 class HierarchyTreeBuilder {
@@ -41,7 +41,7 @@ class HierarchyTreeBuilder {
   diffType?: string;
   skip?: any;
 
-  setId(id: number) {
+  setId(id: string | number) {
     this.id = id;
     return this;
   }

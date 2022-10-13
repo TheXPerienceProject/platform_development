@@ -13,13 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { HierarchyTreeNode, PropertiesTreeNode } from "viewers/common/tree_utils";
+import { HierarchyTreeNode, PropertiesTreeNode } from "viewers/common/ui_tree_utils";
 import { UserOptions } from "viewers/common/user_options";
 import { TraceType } from "common/trace/trace_type";
 import { Rectangle } from "viewers/common/rectangle";
 
 export class UiData {
-  dependencies: Array<TraceType> = [TraceType.WINDOW_MANAGER];
+  dependencies: Array<TraceType>;
   rects: Rectangle[] = [];
   displayIds: number[] = [];
   highlightedItems: Array<string> = [];
@@ -28,4 +28,8 @@ export class UiData {
   propertiesUserOptions: UserOptions = {};
   tree: HierarchyTreeNode | null = null;
   propertiesTree: PropertiesTreeNode | null = null;
+
+  constructor(dependencies?: Array<TraceType>) {
+    this.dependencies = dependencies ?? [];
+  }
 }

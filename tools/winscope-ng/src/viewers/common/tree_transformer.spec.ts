@@ -13,11 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { TreeTransformer } from "viewers/common/tree_transformer";
-import { TreeUtils, DiffType, HierarchyTreeNode, Terminal, TreeNodeTrace } from "viewers/common/tree_utils";
+import {TraceTreeNode} from "common/trace/trace_tree_node";
+import {TreeUtils} from "common/utils/tree_utils";
+import {TreeTransformer} from "viewers/common/tree_transformer";
+import {DiffType, HierarchyTreeNode} from "viewers/common/ui_tree_utils";
 
 describe("TreeTransformer", () => {
-  let entry: TreeNodeTrace;
+  let entry: TraceTreeNode;
   let selectedTree: HierarchyTreeNode;
   beforeAll(async () => {
     entry = {
@@ -33,7 +35,6 @@ describe("TreeTransformer", () => {
         parent: 1,
         type: "ContainerLayer",
       },
-      chips: [],
       parent: undefined,
       children: [{
         id: 2,
@@ -108,7 +109,7 @@ describe("TreeTransformer", () => {
 
     const filter = TreeUtils.makeNodeFilter("");
     const transformer = new TreeTransformer(selectedTree, filter)
-      .showOnlyProtoDump()
+      .setOnlyProtoDump(true)
       .setProperties(entry);
 
     const transformedTree = transformer.transform();
@@ -150,7 +151,7 @@ describe("TreeTransformer", () => {
     const filter = TreeUtils.makeNodeFilter("");
     const transformer = new TreeTransformer(selectedTree, filter)
       .setIsShowDiff(true)
-      .showOnlyProtoDump()
+      .setOnlyProtoDump(true)
       .setProperties(entry)
       .setDiffProperties(null);
 

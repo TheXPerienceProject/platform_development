@@ -16,8 +16,10 @@
 import { UiData } from "./ui_data";
 import { Rectangle, RectMatrix, RectTransform } from "viewers/common/rectangle";
 import { TraceType } from "common/trace/trace_type";
+import { TraceTreeNode } from "common/trace/trace_tree_node";
+import { TreeUtils, FilterType } from "common/utils/tree_utils";
 import { UserOptions } from "viewers/common/user_options";
-import { TreeUtils, FilterType, HierarchyTreeNode, PropertiesTreeNode, TreeNodeTrace } from "viewers/common/tree_utils";
+import { HierarchyTreeNode, PropertiesTreeNode } from "viewers/common/ui_tree_utils";
 import { TreeGenerator } from "viewers/common/tree_generator";
 import { TreeTransformer } from "viewers/common/tree_transformer";
 import DisplayContent from "common/trace/flickerlib/windows/DisplayContent";
@@ -27,7 +29,7 @@ type NotifyViewCallbackType = (uiData: UiData) => void;
 export class Presenter {
   constructor(notifyViewCallback: NotifyViewCallbackType) {
     this.notifyViewCallback = notifyViewCallback;
-    this.uiData = new UiData();
+    this.uiData = new UiData([TraceType.WINDOW_MANAGER]);
     this.notifyViewCallback(this.uiData);
   }
 
@@ -213,7 +215,7 @@ export class Presenter {
       return {};
     }
     const transformer = new TreeTransformer(selectedTree, this.propertiesFilter)
-      .showOnlyProtoDump()
+      .setOnlyProtoDump(true)
       .setIsShowDefaults(this.propertiesUserOptions["showDefaults"]?.enabled)
       .setIsShowDiff(this.propertiesUserOptions["showDiff"]?.enabled)
       .setTransformerOptions({skip: selectedTree.skip})
@@ -232,8 +234,8 @@ export class Presenter {
   private pinnedItems: Array<HierarchyTreeNode> = [];
   private pinnedIds: Array<string> = [];
   private selectedHierarchyTree: HierarchyTreeNode | null = null;
-  private previousEntry: TreeNodeTrace | null = null;
-  private entry: TreeNodeTrace | null = null;
+  private previousEntry: TraceTreeNode | null = null;
+  private entry: TraceTreeNode | null = null;
   private hierarchyUserOptions: UserOptions = {
     showDiff: {
       name: "Show diff",

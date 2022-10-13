@@ -52,6 +52,7 @@ import { PersistentStore } from "common/persistent_store";
               [propertiesTree]="inputData?.propertiesTree ?? {}"
               [selectedFlickerItem]="inputData?.selectedLayer ?? {}"
               [propertyGroups]="true"
+              [isProtoDump]="true"
             ></properties-view>
           </mat-card>
         </div>
@@ -73,10 +74,6 @@ import { PersistentStore } from "common/persistent_store";
         border: none;
         display: inline-block;
         vertical-align: middle;
-      }
-
-      viewer-surface-flinger {
-        font-family: Arial, Helvetica, sans-serif;
       }
 
       .header-button {

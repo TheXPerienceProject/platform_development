@@ -41,12 +41,17 @@ import { TreeNodePropertiesDataViewComponent } from "viewers/components/tree_nod
 import { PropertyGroupsComponent } from "viewers/components/property_groups.component";
 import { TransformMatrixComponent } from "viewers/components/transform_matrix.component";
 import { ParserErrorSnackBarComponent } from "./components/parser_error_snack_bar_component";
+import { ViewerInputMethodComponent } from "viewers/components/viewer_input_method.component";
+import { PropertiesTableComponent } from "viewers/components/properties_table.component";
+import { ImeAdditionalPropertiesComponent } from "viewers/components/ime_additional_properties.component";
+import { CoordinatesTableComponent } from "viewers/components/coordinates_table.component";
 
 @NgModule({
   declarations: [
     AppComponent,
     ViewerWindowManagerComponent,
     ViewerSurfaceFlingerComponent,
+    ViewerInputMethodComponent,
     CollectTracesComponent,
     UploadTracesComponent,
     AdbProxyComponent,
@@ -62,7 +67,10 @@ import { ParserErrorSnackBarComponent } from "./components/parser_error_snack_ba
     TreeNodePropertiesDataViewComponent,
     PropertyGroupsComponent,
     TransformMatrixComponent,
-    ParserErrorSnackBarComponent
+    ParserErrorSnackBarComponent,
+    PropertiesTableComponent,
+    ImeAdditionalPropertiesComponent,
+    CoordinatesTableComponent,
   ],
   imports: [
     BrowserModule,
@@ -87,7 +95,7 @@ import { ParserErrorSnackBarComponent } from "./components/parser_error_snack_ba
     MatTooltipModule,
     MatToolbarModule,
     MatTabsModule,
-    MatSnackBarModule
+    MatSnackBarModule,
   ],
   bootstrap: [AppComponent]
 })
