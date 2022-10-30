@@ -13,20 +13,11 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-const {merge} = require('webpack-merge');
-const configCommon = require('./webpack.config.common');
+class Events {
+  public static LogLevelsFilterChanged = "ViewerProtoLogEvent_LogLevelsFilterChanged";
+  public static TagsFilterChanged = "ViewerProtoLogEvent_TagsFilterChanged";
+  public static SourceFilesFilterChanged = "ViewerProtoLogEvent_SourceFilesFilterChanged";
+  public static SearchStringFilterChanged = "ViewerProtoLogEvent_SearchStringFilterChanged";
+}
 
-const configDev = {
-  mode: 'development',
-  entry: {
-    polyfills: "./src/polyfills.ts",
-    styles: [
-      "./src/material-theme.scss",
-      "./src/styles.css"
-    ],
-    app: "./src/main.dev.ts"
-  },
-  devtool: "source-map",
-};
-
-module.exports = merge(configCommon, configDev);
+export {Events};

@@ -13,20 +13,18 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-const {merge} = require('webpack-merge');
-const configCommon = require('./webpack.config.common');
+import {LogMessage} from "common/trace/protolog";
 
-const configDev = {
-  mode: 'development',
-  entry: {
-    polyfills: "./src/polyfills.ts",
-    styles: [
-      "./src/material-theme.scss",
-      "./src/styles.css"
-    ],
-    app: "./src/main.dev.ts"
-  },
-  devtool: "source-map",
-};
+class UiData {
+  constructor(
+    public allLogLevels: string[],
+    public allTags: string[],
+    public allSourceFiles: string[],
+    public messages: LogMessage[],
+    public currentMessageIndex: undefined|number) {
+  }
 
-module.exports = merge(configCommon, configDev);
+  public static EMPTY = new UiData([], [], [], [], undefined);
+}
+
+export {UiData};
