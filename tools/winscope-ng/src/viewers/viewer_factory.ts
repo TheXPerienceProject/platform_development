@@ -22,16 +22,21 @@ import {ViewerProtoLog} from "./viewer_protolog/viewer_protolog";
 import {ViewerSurfaceFlinger} from "./viewer_surface_flinger/viewer_surface_flinger";
 import {ViewerWindowManager} from "./viewer_window_manager/viewer_window_manager";
 import {ViewerTransactions} from "./viewer_transactions/viewer_transactions";
+import {ViewerScreenRecording} from "./viewer_screen_recording/viewer_screen_recording";
 
 class ViewerFactory {
+  // Note:
+  // the final order of tabs/views in the UI corresponds the order of the
+  // respective viewers below
   static readonly VIEWERS = [
+    ViewerSurfaceFlinger,
+    ViewerWindowManager,
     ViewerInputMethodClients,
     ViewerInputMethodManagerService,
     ViewerInputMethodService,
-    ViewerProtoLog,
-    ViewerSurfaceFlinger,
     ViewerTransactions,
-    ViewerWindowManager,
+    ViewerProtoLog,
+    ViewerScreenRecording,
   ];
 
   public createViewers(activeTraceTypes: Set<TraceType>): Viewer[] {

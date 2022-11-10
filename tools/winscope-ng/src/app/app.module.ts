@@ -1,5 +1,6 @@
 import { NgModule } from "@angular/core";
 import { BrowserModule } from "@angular/platform-browser";
+import { DragDropModule } from "@angular/cdk/drag-drop";
 import { ScrollingModule } from "@angular/cdk/scrolling";
 import { CommonModule } from "@angular/common";
 import { MatCardModule } from "@angular/material/card";
@@ -10,6 +11,7 @@ import { MatProgressSpinnerModule } from "@angular/material/progress-spinner";
 import { MatProgressBarModule } from "@angular/material/progress-bar";
 import { FormsModule } from "@angular/forms";
 import { MatCheckboxModule } from "@angular/material/checkbox";
+import { MatDividerModule } from "@angular/material/divider";
 import { MatFormFieldModule } from "@angular/material/form-field";
 import { MatIconModule } from "@angular/material/icon";
 import { MatInputModule } from "@angular/material/input";
@@ -46,6 +48,7 @@ import { TreeNodeDataViewComponent } from "viewers/components/tree_node_data_vie
 import { TreeNodePropertiesDataViewComponent } from "viewers/components/tree_node_properties_data_view.component";
 import { ViewerInputMethodComponent } from "viewers/components/viewer_input_method.component";
 import { ViewerProtologComponent} from "viewers/viewer_protolog/viewer_protolog.component";
+import { ViewerScreenRecordingComponent } from "viewers/viewer_screen_recording/viewer_screen_recording.component";
 import { ViewerSurfaceFlingerComponent } from "viewers/viewer_surface_flinger/viewer_surface_flinger.component";
 import { ViewerTransactionsComponent } from "viewers/viewer_transactions/viewer_transactions.component";
 import { ViewerWindowManagerComponent } from "viewers/viewer_window_manager/viewer_window_manager.component";
@@ -58,6 +61,7 @@ import { ViewerWindowManagerComponent } from "viewers/viewer_window_manager/view
     ViewerInputMethodComponent,
     ViewerProtologComponent,
     ViewerTransactionsComponent,
+    ViewerScreenRecordingComponent,
     CollectTracesComponent,
     UploadTracesComponent,
     AdbProxyComponent,
@@ -88,6 +92,7 @@ import { ViewerWindowManagerComponent } from "viewers/viewer_window_manager/view
     FormsModule,
     MatListModule,
     MatCheckboxModule,
+    MatDividerModule,
     MatIconModule,
     MatProgressSpinnerModule,
     MatProgressBarModule,
@@ -103,6 +108,7 @@ import { ViewerWindowManagerComponent } from "viewers/viewer_window_manager/view
     MatTabsModule,
     MatSnackBarModule,
     ScrollingModule,
+    DragDropModule,
   ],
   bootstrap: [AppComponent]
 })
