@@ -96,7 +96,6 @@ export class Presenter {
       if (this.entry) {
         this.uiData.highlightedItems = this.highlightedItems;
         this.uiData.rects = this.generateRects();
-        this.uiData.hasVirtualDisplays = this.uiData.rects.filter(rect => rect.isVirtual).length > 0;
         this.uiData.displayIds = this.displayIds;
         this.uiData.tree = this.generateTree();
       }
@@ -184,7 +183,7 @@ export class Presenter {
       }
 
       const newRect: Rectangle = {
-        topLeft: {x: rect.left, y: rect.top},
+        topLeft: {x: rect.left, y: -rect.top},
         bottomRight: {x: rect.right, y: -rect.bottom},
         height: rect.height,
         width: rect.width,

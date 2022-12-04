@@ -15,6 +15,7 @@
  */
 import { CUSTOM_ELEMENTS_SCHEMA } from "@angular/core";
 import {ComponentFixture, ComponentFixtureAutoDetect, TestBed} from "@angular/core/testing";
+import {MatCardModule} from "@angular/material/card";
 import {ViewerScreenRecordingComponent} from "./viewer_screen_recording.component";
 
 describe("ViewerScreenRecordingComponent", () => {
@@ -26,6 +27,9 @@ describe("ViewerScreenRecordingComponent", () => {
     await TestBed.configureTestingModule({
       providers: [
         { provide: ComponentFixtureAutoDetect, useValue: true }
+      ],
+      imports: [
+        MatCardModule,
       ],
       declarations: [
         ViewerScreenRecordingComponent,
@@ -46,17 +50,17 @@ describe("ViewerScreenRecordingComponent", () => {
 
   it("can be minimized and maximized", () => {
     const buttonMinimize = htmlElement.querySelector(".button-minimize");
-    const video = htmlElement.querySelector("video");
+    const videoContainer = htmlElement.querySelector(".video-container") as HTMLElement;
     expect(buttonMinimize).toBeTruthy();
-    expect(video).toBeTruthy();
-    expect(video!.style.height).toEqual("");
+    expect(videoContainer).toBeTruthy();
+    expect(videoContainer!.style.height).toEqual("");
 
     buttonMinimize!.dispatchEvent(new Event("click"));
     fixture.detectChanges();
-    expect(video!.style.height).toEqual("0px");
+    expect(videoContainer!.style.height).toEqual("0px");
 
     buttonMinimize!.dispatchEvent(new Event("click"));
     fixture.detectChanges();
-    expect(video!.style.height).toEqual("");
+    expect(videoContainer!.style.height).toEqual("");
   });
 });

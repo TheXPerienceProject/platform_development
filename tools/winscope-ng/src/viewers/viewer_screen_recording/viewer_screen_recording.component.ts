@@ -20,8 +20,8 @@ import {ScreenRecordingTraceEntry} from "common/trace/screen_recording";
 @Component({
   selector: "viewer-screen-recording",
   template: `
-    <div class="container">
-      <div class="header">
+    <mat-card class="container">
+      <mat-card-title class="header">
         <button mat-button class="button-drag" cdkDragHandle>
           <mat-icon class="drag-icon">drag_indicator</mat-icon>
           <span class="mat-body-2">Screen recording</span>
@@ -33,14 +33,28 @@ import {ScreenRecordingTraceEntry} from "common/trace/screen_recording";
             {{isMinimized ? "maximize" : "minimize"}}
           </mat-icon>
         </button>
+      </mat-card-title>
+      <div class="video-container" [style.height]="isMinimized ? '0px' : ''">
+        <ng-container
+          *ngIf="hasFrameToShow; then video; else noVideo">
+        </ng-container>
       </div>
-      <video
+    </mat-card>
+
+    <ng-template #video>
+      <video *ngIf="hasFrameToShow"
         [currentTime]="videoCurrentTime"
         [src]=videoUrl
-        [style.height]="isMinimized ? '0px' : ''"
         cdkDragHandle>
       </video>
-    </div>
+    </ng-template>
+
+    <ng-template #noVideo>
+      <div class="no-video">
+        <p class="mat-body-2">No screen recording frame to show.</p>
+        <p class="mat-body-1">Current timestamp is still before first frame.</p>
+      </div>
+    </ng-template>
   `,
   styles: [
     `
@@ -49,13 +63,15 @@ import {ScreenRecordingTraceEntry} from "common/trace/screen_recording";
         height: fit-content;
         display: flex;
         flex-direction: column;
+        padding: 0;
       }
 
       .header {
-        background-color: white;
-        border: 1px solid var(--default-border);
         display: flex;
         flex-direction: row;
+        margin: 0px;
+        border: 1px solid var(--border-color);
+        border-radius: 4px;
       }
 
       .button-drag {
@@ -72,9 +88,16 @@ import {ScreenRecordingTraceEntry} from "common/trace/screen_recording";
         flex-grow: 0;
       }
 
-      video {
-        width: 15vw;
+      .video-container, video {
+        border: 1px solid var(--default-border);
+        max-width: max(250px, 15vw);
         cursor: grab;
+        overflow: hidden;
+      }
+
+      .no-video {
+        padding: 1rem;
+        text-align: center;
       }
     `,
   ]
@@ -90,6 +113,7 @@ class ViewerScreenRecordingComponent {
   @Input()
   public set currentTraceEntry(entry: undefined|ScreenRecordingTraceEntry) {
     if (entry === undefined) {
+      this.videoCurrentTime = undefined;
       return;
     }
 
@@ -105,11 +129,15 @@ class ViewerScreenRecordingComponent {
   }
 
   public videoUrl: undefined|SafeUrl = undefined;
-  public videoCurrentTime = 0;
+  public videoCurrentTime: number|undefined = undefined;
   public isMinimized = false;
 
   private elementRef: ElementRef;
   private sanitizer: DomSanitizer;
+
+  get hasFrameToShow() {
+    return this.videoCurrentTime !== undefined;
+  }
 }
 
 export {ViewerScreenRecordingComponent};

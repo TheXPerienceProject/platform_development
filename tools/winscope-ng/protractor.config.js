@@ -25,12 +25,12 @@ exports.config = {
 
   directConnect: true,
   capabilities: {
-    browserName: 'chrome',
+    browserName: "chrome",
     chromeOptions: {
       args: ["--headless", "--disable-gpu", "--window-size=1280x1024"]
     }
   },
-  chromeDriver: "./node_modules/webdriver-manager/selenium/chromedriver_106.0.5249.61",
+  chromeDriver: "./node_modules/webdriver-manager/selenium/chromedriver_107.0.5304.62",
 
   allScriptsTimeout: 10000,
   getPageTimeout: 10000,
