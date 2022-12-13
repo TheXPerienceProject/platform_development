@@ -14,9 +14,8 @@
  * limitations under the License.
  */
 
-import {RectsUtils} from "./rects_utils";
 import {Rectangle} from "viewers/common/rectangle";
-import {Box3D, ColorType, Label3D, Point3D, Rect3D, Scene3D} from "./types3d";
+import {Box3D, ColorType, Label3D, Point3D, Rect3D, Scene3D, Transform3D} from "./types3d";
 
 class Mapper3D {
   private static readonly CAMERA_ROTATION_FACTOR_INIT = 1;
@@ -26,8 +25,8 @@ class Mapper3D {
   private static readonly LABEL_TEXT_Y_SPACING = 200;
   private static readonly LABEL_CIRCLE_RADIUS = 15;
   private static readonly ZOOM_FACTOR_INIT = 1;
-  private static readonly ZOOM_FACTOR_MIN = 0.5;
-  private static readonly ZOOM_FACTOR_MAX = 2.5;
+  private static readonly ZOOM_FACTOR_MIN = 0.1;
+  private static readonly ZOOM_FACTOR_MAX = 8.5;
   private static readonly ZOOM_FACTOR_STEP = 0.2;
 
   private rects: Rectangle[] = [];
@@ -35,8 +34,8 @@ class Mapper3D {
   private cameraRotationFactor = Mapper3D.CAMERA_ROTATION_FACTOR_INIT;
   private zSpacingFactor = Mapper3D.Z_SPACING_FACTOR_INIT;
   private zoomFactor = Mapper3D.ZOOM_FACTOR_INIT;
-  private showOnlyVisibleMode = false;
-  private showVirtualMode = true;
+  private showOnlyVisibleMode = false; // by default show all
+  private showVirtualMode = false; // by default don't show virtual displays
   private currentDisplayId = 0; // default stack id is usually 0
 
   setRects(rects: Rectangle[]) {
@@ -126,7 +125,7 @@ class Mapper3D {
     rects = rects.filter(rect => rect.displayId == this.currentDisplayId);
 
     if (this.showOnlyVisibleMode) {
-      rects = rects.filter(rect => rect.isVisible);
+      rects = rects.filter(rect => rect.isVisible || rect.isDisplay);
     }
 
     if (!this.showVirtualMode) {
@@ -137,14 +136,6 @@ class Mapper3D {
   }
 
   private computeRects(rects2d: Rectangle[]): Rect3D[] {
-    rects2d = rects2d.map(rect => {
-      if (rect.transform) {
-        return RectsUtils.transformRect(rect.transform.matrix ??  rect.transform, rect);
-      } else {
-        return rect;
-      }
-    });
-
     let visibleRectsSoFar = 0;
     let visibleRectsTotal = 0;
     let nonVisibleRectsSoFar = 0;
@@ -160,10 +151,29 @@ class Mapper3D {
 
     let z = 0;
 
+    const displays = rects2d.filter((rect2d) => rect2d.isDisplay);
+    // Arbitrary max size for a rect (2x the maximum display)
+    let maxDimension = Number.MAX_VALUE;
+
+    if (displays.length > 0) {
+      maxDimension = Math.max(
+        ...displays.map((rect2d): number => Math.max(rect2d.width, rect2d.height))
+      ) * 2;
+    }
+
     const rects3d = rects2d.map((rect2d): Rect3D => {
-      const center: Point3D = {
+      const identity: Transform3D = {
+        dsdx: 1,
+        dsdy: 0,
+        tx: 0,
+        dtdx: 0,
+        dtdy: 1,
+        ty: 0
+      };
+
+      let center: Point3D = {
         x: rect2d.topLeft.x + rect2d.width / 2,
-        y: rect2d.topLeft.y - rect2d.height / 2,
+        y: rect2d.topLeft.y + rect2d.height / 2,
         z: z
       };
 
@@ -183,14 +193,44 @@ class Mapper3D {
         colorType = ColorType.NOT_VISIBLE;
       }
 
+      let transform: Transform3D;
+      if (rect2d.transform?.matrix) {
+        transform = {
+          dsdx: rect2d.transform.matrix.dsdx,
+          dsdy: rect2d.transform.matrix.dsdy,
+          tx: rect2d.transform.matrix.tx,
+          dtdx: rect2d.transform.matrix.dtdx,
+          dtdy: rect2d.transform.matrix.dtdy,
+          ty: rect2d.transform.matrix.ty,
+        };
+      } else {
+        transform = identity;
+      }
+
+      let height = rect2d.height;
+      let width = rect2d.width;
+
+      // Crop oversized rectangles (e.g. BackColorSurface to make it easier to see elements)
+      if (width > maxDimension && height > maxDimension) {
+        width = maxDimension;
+        height = maxDimension;
+        // centralize the new rect
+        center = {
+          x: maxDimension / 4,
+          y: 0,
+          z: center.z
+        };
+      }
+
       return {
         id: rect2d.id,
         center: center,
-        width: rect2d.width,
-        height: rect2d.height,
+        width: width,
+        height: height,
         darkFactor: darkFactor,
         colorType: colorType,
-        isClickable: rect2d.isClickable
+        isClickable: rect2d.isClickable,
+        transform: transform,
       };
     });
 
@@ -200,7 +240,14 @@ class Mapper3D {
   private computeLabels(rects2d: Rectangle[], rects3d: Rect3D[]): Label3D[] {
     const labels3d: Label3D[] = [];
 
-    let labelY = Math.min(...rects3d.map(rect => rect.center.y - rect.height / 2)) - Mapper3D.LABEL_FIRST_Y_OFFSET;
+    let labelY = Math.max(...rects3d.map(rect => {
+      const bottomRight = {
+        x: rect.center.x + rect.width / 2,
+        y: rect.center.y + rect.height / 2,
+        z: rect.center.z,
+      };
+      return this.matMultiply(rect.transform, bottomRight).y;
+    })) + Mapper3D.LABEL_FIRST_Y_OFFSET;
 
     rects2d.forEach((rect2d, index) => {
       if (!rect2d.label) {
@@ -209,11 +256,36 @@ class Mapper3D {
 
       const rect3d = rects3d[index];
 
-      const lineStart: Point3D = {
-        x: rect3d.center.x + rect3d.width / 2 - Mapper3D.LABEL_CIRCLE_RADIUS / 2,
-        y: rect3d.center.y,
-        z: rect3d.center.z
-      };
+      const lineStarts = [
+        this.matMultiply(rect3d.transform, {
+          x: rect3d.center.x - rect3d.width / 2,
+          y: rect3d.center.y,
+          z: rect3d.center.z
+        }),
+        this.matMultiply(rect3d.transform, {
+          x: rect3d.center.x + rect3d.width / 2,
+          y: rect3d.center.y,
+          z: rect3d.center.z
+        }),
+        this.matMultiply(rect3d.transform, {
+          x: rect3d.center.x,
+          y: rect3d.center.y - rect3d.width / 2,
+          z: rect3d.center.z
+        }),
+        this.matMultiply(rect3d.transform, {
+          x: rect3d.center.x,
+          y: rect3d.center.y + rect3d.width / 2,
+          z: rect3d.center.z
+        })
+      ];
+      let maxIndex = 0;
+      for (var i = 1; i < lineStarts.length; i++) {
+        if (lineStarts[i].x > lineStarts[maxIndex].x) {
+          maxIndex = i;
+        }
+      }
+      const lineStart = lineStarts[maxIndex];
+      lineStart.x += Mapper3D.LABEL_CIRCLE_RADIUS / 2;
 
       const lineEnd: Point3D = {
         x: lineStart.x,
@@ -226,7 +298,11 @@ class Mapper3D {
       const label3d: Label3D = {
         circle: {
           radius: Mapper3D.LABEL_CIRCLE_RADIUS,
-          center: lineStart
+          center: {
+            x: lineStart.x,
+            y: lineStart.y,
+            z: lineStart.z + 0.5,
+          },
         },
         linePoints: [lineStart, lineEnd],
         textCenter: lineEnd,
@@ -236,10 +312,18 @@ class Mapper3D {
       };
       labels3d.push(label3d);
 
-      labelY -= Mapper3D.LABEL_TEXT_Y_SPACING;
+      labelY += Mapper3D.LABEL_TEXT_Y_SPACING;
     });
 
     return labels3d;
+  }
+
+  private matMultiply(mat: Transform3D, point: Point3D): Point3D {
+    return {
+      x: mat.dsdx * point.x + mat.dsdy * point.y + mat.tx,
+      y: mat.dtdx * point.x + mat.dtdy * point.y + mat.ty,
+      z: point.z,
+    };
   }
 
   private computeBoundingBox(rects: Rect3D[], labels: Label3D[]): Box3D {

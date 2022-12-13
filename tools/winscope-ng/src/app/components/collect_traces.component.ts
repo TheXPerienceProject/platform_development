@@ -188,7 +188,6 @@ export class CollectTracesComponent implements OnInit, OnDestroy {
   }
 
   public onAddKey(key: string) {
-    this.store.addToStore("adb.proxyKey", key);
     if (this.connect.setProxyKey) {
       this.connect.setProxyKey(key);
     }
@@ -324,7 +323,7 @@ export class CollectTracesComponent implements OnInit, OnDestroy {
     console.log("loading files", this.connect.adbData());
     this.traceCoordinator.clearData();
 
-    const parserErrors = await this.traceCoordinator.addTraces(this.connect.adbData());
+    const parserErrors = await this.traceCoordinator.setTraces(this.connect.adbData());
     if (parserErrors.length > 0) {
       this.openTempSnackBar(parserErrors);
     }

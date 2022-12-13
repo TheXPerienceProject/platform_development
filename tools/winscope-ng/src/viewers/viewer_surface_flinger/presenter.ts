@@ -106,22 +106,42 @@ export class Presenter {
   private generateRects(): Rectangle[] {
     const displayRects = this.entry.displays.map((display: any) => {
       const rect = display.layerStackSpace;
-      rect.label = display.name;
+      rect.label = `Display`;
+      if (display.name) {
+        rect.label += ` - ${display.name}`;
+      }
       rect.id = display.id;
       rect.displayId = display.layerStackId;
       rect.isDisplay = true;
       rect.isVirtual = display.isVirtual ?? false;
+      rect.transform = {
+        matrix: display.transform.matrix
+      };
       return rect;
     }) ?? [];
     this.displayIds = [];
     const rects = this.entry.visibleLayers
-      .sort((a: any, b: any) => (b.absoluteZ > a.absoluteZ) ? 1 : (a.absoluteZ == b.absoluteZ) ? 0 : -1)
+      .sort((layer1: any, layer2: any) => {
+        const absZLayer1 = layer1.zOrderPath;
+        const absZLayer2 = layer2.zOrderPath;
+        var elA, elB, i, len;
+        for (i = 0, len = Math.min(absZLayer1.length, absZLayer2.length); i < len; i++) {
+          elA = absZLayer1[i];
+          elB = absZLayer2[i];
+          if (elA > elB) return -1;
+          if (elA < elB) return 1;
+        }
+        return absZLayer2.length - absZLayer1.length;
+      })
       .map((it: any) => {
         const rect = it.rect;
         rect.displayId = it.stackId;
         if (!this.displayIds.includes(it.stackId)) {
           this.displayIds.push(it.stackId);
         }
+        rect.transform = {
+          matrix: rect.transform.matrix
+        };
         return rect;
       });
     return this.rectsToUiData(rects.concat(displayRects));
@@ -175,7 +195,7 @@ export class Presenter {
           dtdx: t.dtdx,
           dtdy: t.dtdy,
           tx: t.tx,
-          ty: -t.ty
+          ty: t.ty
         };
         transform = {
           matrix: matrix,
@@ -183,8 +203,8 @@ export class Presenter {
       }
 
       const newRect: Rectangle = {
-        topLeft: {x: rect.left, y: -rect.top},
-        bottomRight: {x: rect.right, y: -rect.bottom},
+        topLeft: {x: rect.left, y: rect.top},
+        bottomRight: {x: rect.right, y: rect.bottom},
         height: rect.height,
         width: rect.width,
         label: rect.label,
@@ -261,7 +281,7 @@ export class Presenter {
     },
     showDefaults: {
       name: "Show defaults",
-      enabled: true,
+      enabled: false,
       tooltip: `
                 If checked, shows the value of all properties.
                 Otherwise, hides all properties whose value is
