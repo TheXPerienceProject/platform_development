@@ -32,7 +32,7 @@ import { TraceType } from "common/trace/trace_type";
 import { TRACE_INFO } from "app/trace_info";
 import { TimelineCoordinator, TimestampChangeObserver } from "app/timeline_coordinator";
 import { MiniTimelineComponent } from "./mini_timeline.component";
-import { Timestamp } from "common/trace/timestamp";
+import { Timestamp, TimestampType } from "common/trace/timestamp";
 import { TimeUtils } from "common/utils/time_utils";
 
 @Component({
@@ -59,7 +59,7 @@ import { TimeUtils } from "common/utils/time_utils";
         ></expanded-timeline>
     </div>
     <div class="navbar" #collapsedTimeline>
-      <ng-template [ngIf]="hasTimestamps()">
+      <ng-template [ngIf]="hasMoreThanOneDistinctTimestamp()">
         <div id="time-selector">
             <button mat-icon-button
               id="prev_entry_button"
@@ -69,10 +69,24 @@ import { TimeUtils } from "common/utils/time_utils";
                 <mat-icon>chevron_left</mat-icon>
             </button>
             <form [formGroup]="timestampForm" class="time-selector-form">
-                <mat-form-field class="time-input" appearance="fill" (change)="inputTimeChanged($event)">
-                    <input matInput name="humanTimeInput" [formControl]="selectedTimeFormControl" />
+                <mat-form-field
+                  class="time-input"
+                  appearance="fill"
+                  (change)="humanElapsedTimeInputChange($event)"
+                  *ngIf="!usingRealtime()">
+                    <input matInput name="humanElapsedTimeInput" [formControl]="selectedElapsedTimeFormControl" />
                 </mat-form-field>
-                <mat-form-field class="time-input" appearance="fill" (change)="inputTimeChanged($event)">
+                <mat-form-field
+                  class="time-input"
+                  appearance="fill"
+                  (change)="humanRealTimeInputChanged($event)"
+                  *ngIf="usingRealtime()">
+                    <input matInput name="humanRealTimeInput" [formControl]="selectedRealTimeFormControl" />
+                </mat-form-field>
+                <mat-form-field
+                  class="time-input"
+                  appearance="fill"
+                  (change)="nanosecondsInputTimeChange($event)">
                     <input matInput name="nsTimeInput" [formControl]="selectedNsFormControl" />
                 </mat-form-field>
             </form>
@@ -125,7 +139,7 @@ import { TimeUtils } from "common/utils/time_utils";
           id="mini-timeline"
           #miniTimeline
         ></mini-timeline>
-        <div id="toggle" *ngIf="hasTimestamps()">
+        <div id="toggle" *ngIf="hasMoreThanOneDistinctTimestamp()">
             <button mat-icon-button
                     [class]="TOGGLE_BUTTON_CLASS"
                     color="primary"
@@ -139,6 +153,10 @@ import { TimeUtils } from "common/utils/time_utils";
       <div *ngIf="!hasTimestamps()" class="no-timestamps-msg">
         <p class="mat-body-2">No timeline to show!</p>
         <p class="mat-body-1">All loaded traces contain no timestamps!</p>
+      </div>
+      <div *ngIf="!hasMoreThanOneDistinctTimestamp()" class="no-timestamps-msg">
+        <p class="mat-body-2">No timeline to show!</p>
+        <p class="mat-body-1">Only a single timestamp has been recorded.</p>
       </div>
     </div>
 `,
@@ -291,14 +309,18 @@ export class TimelineComponent implements TimestampChangeObserver {
   selectedTraces: TraceType[] = [];
   selectedTracesFormControl = new FormControl();
 
-  selectedTimeFormControl = new FormControl("", Validators.compose([
+  selectedElapsedTimeFormControl = new FormControl("undefined", Validators.compose([
     Validators.required,
-    Validators.pattern(TimeUtils.HUMAN_TIMESTAMP_REGEX)]));
-  selectedNsFormControl = new FormControl(BigInt(0), Validators.compose([
+    Validators.pattern(TimeUtils.HUMAN_ELAPSED_TIMESTAMP_REGEX)]));
+  selectedRealTimeFormControl = new FormControl("undefined", Validators.compose([
+    Validators.required,
+    Validators.pattern(TimeUtils.HUMAN_REAL_TIMESTAMP_REGEX)]));
+  selectedNsFormControl = new FormControl("undefined", Validators.compose([
     Validators.required,
     Validators.pattern(TimeUtils.NS_TIMESTAMP_REGEX)]));
   timestampForm = new FormGroup({
-    selectedTime: this.selectedTimeFormControl,
+    selectedElapsedTime: this.selectedElapsedTimeFormControl,
+    selectedRealTime: this.selectedRealTimeFormControl,
     selectedNs: this.selectedNsFormControl,
   });
 
@@ -319,7 +341,11 @@ export class TimelineComponent implements TimestampChangeObserver {
   private seekTimestamp: Timestamp|undefined;
 
   hasTimestamps(): boolean {
-    return this.timelineCoordinator.getAllTimestamps().length > 0;
+    return this.timelineCoordinator.getAllUniqueTimestamps().length > 0;
+  }
+
+  hasMoreThanOneDistinctTimestamp(): boolean {
+    return this.timelineCoordinator.getAllUniqueTimestamps().length > 1;
   }
 
   get currentTimestamp(): Timestamp {
@@ -367,14 +393,19 @@ export class TimelineComponent implements TimestampChangeObserver {
     this.timelineCoordinator.updateCurrentTimestamp(timestamp);
   }
 
+  usingRealtime(): boolean {
+    return this.timelineCoordinator.getTimestampType() === TimestampType.REAL;
+  }
+
   updateSeekTimestamp(timestamp: Timestamp|undefined) {
     this.seekTimestamp = timestamp;
     this.updateTimeInputValuesToCurrentTimestamp();
   }
 
   private updateTimeInputValuesToCurrentTimestamp() {
-    this.selectedTimeFormControl.setValue(TimeUtils.nanosecondsToHuman(this.currentTimestamp.getValueNs(), false));
-    this.selectedNsFormControl.setValue(this.currentTimestamp.getValueNs());
+    this.selectedElapsedTimeFormControl.setValue(TimeUtils.nanosecondsToHumanElapsed(this.currentTimestamp.getValueNs(), false));
+    this.selectedRealTimeFormControl.setValue(TimeUtils.nanosecondsToHumanReal(this.currentTimestamp.getValueNs()));
+    this.selectedNsFormControl.setValue(`${this.currentTimestamp.getValueNs()} ns`);
   }
 
   isOptionDisabled(trace: TraceType) {
@@ -443,26 +474,37 @@ export class TimelineComponent implements TimestampChangeObserver {
     this.timelineCoordinator.moveToNextEntryFor(this.wrappedActiveTrace);
   }
 
-  inputTimeChanged(event: Event) {
-    console.error("Input time changed to", event);
+  humanElapsedTimeInputChange(event: Event) {
     if (event.type !== "change") {
       return;
     }
-
     const target = event.target as HTMLInputElement;
+    const timestamp = new Timestamp(this.timelineCoordinator.getTimestampType()!,
+      TimeUtils.humanElapsedToNanoseconds(target.value));
+    this.timelineCoordinator.updateCurrentTimestamp(timestamp);
+    this.updateTimeInputValuesToCurrentTimestamp();
+  }
 
-    if (TimeUtils.NS_TIMESTAMP_REGEX.test(target.value)) {
-      const timestamp = new Timestamp(this.timelineCoordinator.getTimestampType()!, BigInt(target.value));
-      this.timelineCoordinator.updateCurrentTimestamp(timestamp);
-    } else if (TimeUtils.HUMAN_TIMESTAMP_REGEX.test(target.value)) {
-      const timestamp = new Timestamp(this.timelineCoordinator.getTimestampType()!,
-        TimeUtils.humanToNanoseconds(target.value));
-      this.timelineCoordinator.updateCurrentTimestamp(timestamp);
-    } else {
-      console.warn(`Invalid timestamp input provided "${target.value}" and can't be processed.`);
+  humanRealTimeInputChanged(event: Event) {
+    if (event.type !== "change") {
       return;
     }
+    const target = event.target as HTMLInputElement;
 
+    const timestamp = new Timestamp(this.timelineCoordinator.getTimestampType()!,
+      TimeUtils.humanRealToNanoseconds(target.value));
+    this.timelineCoordinator.updateCurrentTimestamp(timestamp);
+    this.updateTimeInputValuesToCurrentTimestamp();
+  }
+
+  nanosecondsInputTimeChange(event: Event) {
+    if (event.type !== "change") {
+      return;
+    }
+    const target = event.target as HTMLInputElement;
+
+    const timestamp = new Timestamp(this.timelineCoordinator.getTimestampType()!, BigInt(target.value));
+    this.timelineCoordinator.updateCurrentTimestamp(timestamp);
     this.updateTimeInputValuesToCurrentTimestamp();
   }
 }
