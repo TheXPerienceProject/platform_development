@@ -13,9 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import { PersistentStore } from "common/persistent_store";
+import { PersistentStore } from "common/utils/persistent_store";
 import { configMap, TRACES } from "./trace_collection_utils";
-import { setTraces, SetTraces } from "./set_traces";
 import { Device } from "./connection";
 import { ProxyConnection } from "./proxy_connection";
 
@@ -46,107 +45,125 @@ export enum ProxyEndpoint {
 
 // from here, all requests to the proxy are made
 class ProxyRequest {
+  // List of trace we are actively tracing
+  private tracingTraces: string[]|undefined;
+
   async call(
     method: string,
     path: string,
-    view: any,
-    onSuccess: any,
+    onSuccess: ((request: XMLHttpRequest) => void|Promise<void>) | undefined,
     type?: XMLHttpRequestResponseType,
     jsonRequest: any = null
-  ) {
-    const request = new XMLHttpRequest();
-    const client = proxyClient;
-    request.onreadystatechange = function() {
-      if (this.readyState !== 4) {
-        return;
-      }
-      if (this.status === 0) {
-        client.setState(ProxyState.NO_PROXY);
-      } else if (this.status === 200) {
-        if (this.getResponseHeader("Winscope-Proxy-Version") !== client.VERSION) {
-          client.setState(ProxyState.INVALID_VERSION);
-        } else if (onSuccess) {
-          onSuccess(this, view);
+  ): Promise<void> {
+    return new Promise((resolve) => {
+      const request = new XMLHttpRequest();
+      const client = proxyClient;
+      request.onreadystatechange = async function() {
+        if (this.readyState !== XMLHttpRequest.DONE) {
+          return;
         }
-      } else if (this.status === 403) {
-        client.setState(ProxyState.UNAUTH);
+        if (this.status === XMLHttpRequest.UNSENT) {
+          client.setState(ProxyState.NO_PROXY);
+          resolve();
+        } else if (this.status === 200) {
+          if (this.getResponseHeader("Winscope-Proxy-Version") !== client.VERSION) {
+            client.setState(ProxyState.INVALID_VERSION);
+            resolve();
+          } else if (onSuccess) {
+            try {
+              await onSuccess(this);
+            } catch(err) {
+              console.error(err);
+              proxyClient.setState(ProxyState.ERROR,
+                `Error handling request response:\n${err}\n\n`+
+                `Request:\n ${request.responseText}`);
+              resolve();
+            }
+          }
+          resolve();
+        } else if (this.status === 403) {
+          client.setState(ProxyState.UNAUTH);
+          resolve();
+        } else {
+          if (this.responseType === "text" || !this.responseType) {
+            client.errorText = this.responseText;
+          } else if (this.responseType === "arraybuffer") {
+            client.errorText = String.fromCharCode.apply(null, new Array(this.response));
+          }
+          client.setState(ProxyState.ERROR, client.errorText);
+          resolve();
+        }
+      };
+      request.responseType = type || "";
+      request.open(method, client.WINSCOPE_PROXY_URL + path);
+      const lastKey = client.store.get("adb.proxyKey");
+      if (lastKey !== null) {
+        client.proxyKey = lastKey;
+      }
+      request.setRequestHeader("Winscope-Token", client.proxyKey);
+      if (jsonRequest) {
+        const json = JSON.stringify(jsonRequest);
+        request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+        request.send(json);
       } else {
-        if (this.responseType === "text" || !this.responseType) {
-          client.errorText = this.responseText;
-        } else if (this.responseType === "arraybuffer") {
-          client.errorText = String.fromCharCode.apply(null, new Array(this.response));
-        }
-        client.setState(ProxyState.ERROR, client.errorText);
-      }
-    };
-    request.responseType = type || "";
-    request.open(method, client.WINSCOPE_PROXY_URL + path);
-    const lastKey = client.store.getFromStore("adb.proxyKey");
-    if (lastKey !== null) {
-      client.proxyKey = lastKey;
-    }
-    request.setRequestHeader("Winscope-Token", client.proxyKey);
-    if (jsonRequest) {
-      const json = JSON.stringify(jsonRequest);
-      request.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
-      request.send(json);
-    } else {
-      request.send();
-    }
-  }
-
-  getDevices(view:any) {
-    proxyRequest.call("GET", ProxyEndpoint.DEVICES, view, proxyRequest.onSuccessGetDevices);
-  }
-
-  async fetchFiles(dev:string, files: Array<string>, idx: number, view:any) {
-    await proxyRequest.call("GET", `${ProxyEndpoint.FETCH}${dev}/${files[idx]}/`, view,
-      proxyRequest.onSuccessUpdateAdbData, "arraybuffer");
-  }
-
-  setEnabledConfig(view:any, req: Array<string>) {
-    proxyRequest.call("POST", `${ProxyEndpoint.ENABLE_CONFIG_TRACE}${view.proxy.selectedDevice}/`, view, null, undefined, req);
-  }
-
-  setSelectedConfig(endpoint: ProxyEndpoint, view:any, req: configMap) {
-    proxyRequest.call("POST", `${endpoint}${view.proxy.selectedDevice}/`, view, null, undefined, req);
-  }
-
-  startTrace(view:any) {
-    proxyRequest.call("POST", `${ProxyEndpoint.START_TRACE}${view.proxy.selectedDevice}/`, view, function(request:XMLHttpRequest, newView:ProxyConnection) {
-      newView.keepAliveTrace(newView);
-    }, undefined, setTraces.reqTraces);
-  }
-
-  async endTrace(view:any) {
-    await proxyRequest.call("POST", `${ProxyEndpoint.END_TRACE}${view.proxy.selectedDevice}/`, view,
-      async function (request:XMLHttpRequest, newView:ProxyConnection) {
-        await proxyClient.updateAdbData(setTraces.reqTraces, 0, "trace", newView);
-      });
-  }
-
-  keepTraceAlive(view:any) {
-    this.call("GET", `${ProxyEndpoint.STATUS}${view.proxy.selectedDevice}/`, view, function(request:XMLHttpRequest, newView:ProxyConnection) {
-      if (request.responseText !== "True") {
-        newView.endTrace();
-      } else if (newView.keep_alive_worker === null) {
-        newView.keep_alive_worker = setInterval(newView.keepAliveTrace, 1000, newView);
+        request.send();
       }
     });
   }
 
-  async dumpState(view:any) {
-    await proxyRequest.call("POST", `${ProxyEndpoint.DUMP}${view.proxy.selectedDevice}/`, view,
-      async function(request:XMLHttpRequest, newView:ProxyConnection) {
-        await proxyClient.updateAdbData(setTraces.reqDumps, 0, "dump", newView);
-      }, undefined, setTraces.reqDumps);
+  async getDevices(view: any) {
+    await proxyRequest.call("GET", ProxyEndpoint.DEVICES, proxyRequest.onSuccessGetDevices);
   }
 
-  onSuccessGetDevices = function(request: XMLHttpRequest, view: ProxyClient) {
+  async setEnabledConfig(view: any, req: Array<string>) {
+    await proxyRequest.call("POST", `${ProxyEndpoint.ENABLE_CONFIG_TRACE}${view.proxy.selectedDevice}/`, undefined, undefined, req);
+  }
+
+  async setSelectedConfig(endpoint: ProxyEndpoint, view: any, req: configMap) {
+    await proxyRequest.call("POST", `${endpoint}${view.proxy.selectedDevice}/`, undefined, undefined, req);
+  }
+
+  async startTrace(view: any, requestedTraces: string[]) {
+    this.tracingTraces = requestedTraces;
+    await proxyRequest.call("POST", `${ProxyEndpoint.START_TRACE}${view.proxy.selectedDevice}/`, (request:XMLHttpRequest) => {
+      view.keepAliveTrace(view);
+    }, undefined, requestedTraces);
+  }
+
+  async endTrace(view: any, progressCallback: (progress: number) => void): Promise<void> {
+    const requestedTraces = this.tracingTraces;
+    this.tracingTraces = undefined;
+    if (requestedTraces === undefined) {
+      throw Error("Trace no started before stopping");
+    }
+    await proxyRequest.call("POST", `${ProxyEndpoint.END_TRACE}${view.proxy.selectedDevice}/`,
+      async (request: XMLHttpRequest) => {
+        await proxyClient.updateAdbData(requestedTraces, "trace", progressCallback);
+      });
+  }
+
+  async keepTraceAlive(view: any) {
+    await this.call("GET", `${ProxyEndpoint.STATUS}${view.proxy.selectedDevice}/`, (request: XMLHttpRequest) => {
+      if (request.responseText !== "True") {
+        view.endTrace();
+      } else if (view.keep_alive_worker === null) {
+        view.keep_alive_worker = setInterval(view.keepAliveTrace, 1000, view);
+      }
+    });
+  }
+
+  async dumpState(view: any, requestedDumps: string[], progressCallback: (progress: number) => void) {
+    await proxyRequest.call("POST", `${ProxyEndpoint.DUMP}${view.proxy.selectedDevice}/`,
+      async (request: XMLHttpRequest) => {
+        await proxyClient.updateAdbData(requestedDumps, "dump", progressCallback);
+      }, undefined, requestedDumps);
+  }
+
+  onSuccessGetDevices = function(request: XMLHttpRequest) {
     const client = proxyClient;
     try {
       client.devices = JSON.parse(request.responseText);
-      const last = client.store.getFromStore("adb.lastDevice");
+      const last = client.store.get("adb.lastDevice");
       if (last && client.devices[last] &&
               client.devices[last].authorised) {
         client.selectDevice(last);
@@ -163,44 +180,32 @@ class ProxyRequest {
     }
   };
 
-  onSuccessSetAvailableTraces = function(request:XMLHttpRequest, view:SetTraces) {
-    try {
-      view.DYNAMIC_TRACES = TRACES["default"];
-      if(request.responseText == "true") {
-        view.appendOptionalTraces(view, "arc");
-      }
-    } catch(err) {
-      proxyClient.setState(ProxyState.ERROR, request.responseText);
-    }
-  };
+  async fetchFiles(dev: string, adbParams: AdbParams): Promise<void> {
+    const files = adbParams.files;
+    const idx = adbParams.idx;
 
-  onSuccessUpdateAdbData = async (request: XMLHttpRequest, view: ProxyConnection) => {
-    const idx = proxyClient.adbParams.idx;
-    const files = proxyClient.adbParams.files;
-    const traceType = proxyClient.adbParams.traceType;
-    try {
-      const enc = new TextDecoder("utf-8");
-      const resp = enc.decode(request.response);
-      const filesByType = JSON.parse(resp);
+    await proxyRequest.call("GET", `${ProxyEndpoint.FETCH}${dev}/${files[idx]}/`,
+      async (request: XMLHttpRequest) => {
+        try {
+          const enc = new TextDecoder("utf-8");
+          const resp = enc.decode(request.response);
+          const filesByType = JSON.parse(resp);
 
-      for (const filetype in filesByType) {
-        const files = filesByType[filetype];
-        for (const encodedFileBuffer of files) {
-          const buffer = Uint8Array.from(atob(encodedFileBuffer), (c) => c.charCodeAt(0));
-          const blob = new Blob([buffer]);
-          const newFile = new File([blob], filetype);
-          proxyClient.adbData.push(newFile);
+          for (const filetype in filesByType) {
+            const files = filesByType[filetype];
+            for (const encodedFileBuffer of files) {
+              const buffer = Uint8Array.from(atob(encodedFileBuffer), (c) => c.charCodeAt(0));
+              const blob = new Blob([buffer]);
+              const newFile = new File([blob], filetype);
+              proxyClient.adbData.push(newFile);
+            }
+          }
+        } catch (error) {
+          proxyClient.setState(ProxyState.ERROR, request.responseText);
+          throw error;
         }
-      }
-      if (idx < files.length - 1) {
-        proxyClient.updateAdbData(files, idx + 1, traceType, view);
-      } else {
-        setTraces.dataReady = true;
-      }
-    } catch (error) {
-      proxyClient.setState(ProxyState.ERROR, request.responseText);
-    }
-  };
+      }, "arraybuffer");
+  }
 }
 export const proxyRequest = new ProxyRequest();
 
@@ -213,7 +218,7 @@ interface AdbParams {
 // stores all the changing variables from proxy and sets up calls from ProxyRequest
 export class ProxyClient {
   readonly WINSCOPE_PROXY_URL = "http://localhost:5544";
-  readonly VERSION = "0.8";
+  readonly VERSION = "1.0";
   state: ProxyState = ProxyState.CONNECTING;
   stateChangeListeners: {(param:ProxyState, errorText:string): void;}[] = [];
   refresh_worker: NodeJS.Timer | null = null;
@@ -224,11 +229,6 @@ export class ProxyClient {
   proxyKey = "";
   lastDevice = "";
   store = new PersistentStore();
-  adbParams: AdbParams = {
-    files: [],
-    idx: -1,
-    traceType: "",
-  };
 
   setState(state:ProxyState, errorText = "") {
     this.state = state;
@@ -258,15 +258,20 @@ export class ProxyClient {
 
   selectDevice(device_id: string) {
     this.selectedDevice = device_id;
-    this.store.addToStore("adb.lastDevice", device_id);
+    this.store.add("adb.lastDevice", device_id);
     this.setState(ProxyState.START_TRACE);
   }
 
-  async updateAdbData(files:Array<string>, idx:number, traceType:string, view: ProxyConnection) {
-    this.adbParams.files = files;
-    this.adbParams.idx = idx;
-    this.adbParams.traceType = traceType;
-    await proxyRequest.fetchFiles(this.selectedDevice, files, idx, view);
+  async updateAdbData(files: Array<string>, traceType: string, progressCallback: (progress: number) => void) {
+    for (let idx = 0; idx < files.length; idx++) {
+      const adbParams = {
+        files,
+        idx,
+        traceType
+      };
+      await proxyRequest.fetchFiles(this.selectedDevice, adbParams);
+      progressCallback(100 * (idx + 1) / files.length);
+    }
   }
 }
 
