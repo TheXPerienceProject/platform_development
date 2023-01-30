@@ -18,6 +18,7 @@ import { Display, LayerTraceEntry, LayerTraceEntryBuilder, toRect, toSize, toTra
 import {Layer} from "./Layer";
 import {getPropertiesForDisplay} from "../mixin";
 import { TimeUtils } from "common/utils/time_utils";
+import { ElapsedTimestamp, RealTimestamp } from "common/trace/timestamp";
 
 LayerTraceEntry.fromProto = function (
     protos: any[],
@@ -27,9 +28,10 @@ LayerTraceEntry.fromProto = function (
     hwcBlob: string,
     where = "",
     realToElapsedTimeOffsetNs: bigint|undefined = undefined,
-    useElapsedTime = false
+    useElapsedTime = false,
+    excludesCompositionState = false
 ): LayerTraceEntry {
-    const layers = protos.map(it => Layer.fromProto(it));
+    const layers = protos.map(it => Layer.fromProto(it, excludesCompositionState));
     const displays = (displayProtos || []).map(it => newDisplay(it));
     const builder = new LayerTraceEntryBuilder(
         `${elapsedTimestamp}`,
@@ -60,10 +62,10 @@ function addAttributes(entry: LayerTraceEntry, protos: any, useElapsedTime = fal
     if (newObj.isVisible) delete newObj.isVisible;
     entry.proto = newObj;
     if (useElapsedTime || entry.clockTimestamp == undefined) {
-        entry.name = TimeUtils.nanosecondsToHumanElapsed(BigInt(entry.elapsedTimestamp));
+        entry.name = TimeUtils.format(new ElapsedTimestamp(BigInt(entry.elapsedTimestamp)));
         entry.shortName = entry.name;
     } else {
-        entry.name = TimeUtils.nanosecondsToHumanReal(BigInt(entry.clockTimestamp));
+        entry.name = TimeUtils.format(new RealTimestamp(entry.clockTimestamp));
         entry.shortName = entry.name;
     }
     entry.isVisible = true;

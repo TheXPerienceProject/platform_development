@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 
-import { Timestamp, TimestampType } from "common/trace/timestamp";
-import dateFormat, { masks } from "dateformat";
+import { ElapsedTimestamp, RealTimestamp, Timestamp, TimestampType } from "common/trace/timestamp";
 
 export class TimeUtils {
   static compareFn(a: Timestamp, b: Timestamp): number {
@@ -39,7 +38,7 @@ export class TimeUtils {
     }
   }
 
-  static nanosecondsToHumanElapsed(timestampNanos: number|bigint, hideNs = true): string {
+  private static nanosecondsToHumanElapsed(timestampNanos: number|bigint, hideNs = true): string {
     timestampNanos = BigInt(timestampNanos);
     const units = TimeUtils.units;
 
@@ -65,21 +64,20 @@ export class TimeUtils {
     return parts.join("");
   }
 
-  static nanosecondsToHumanReal(timestampNanos: number|bigint, hideNs = false): string {
+  private static nanosecondsToHumanReal(timestampNanos: number|bigint, hideNs = true): string {
     timestampNanos = BigInt(timestampNanos);
     const ms = timestampNanos / 1000000n;
     const extraNanos = timestampNanos % 1000000n;
-    const formattedTime = dateFormat(new Date(Number(ms)), "HH\"h\"MM\"m\"ss\"s\"l\"ms\"");
-    const formattedDate = dateFormat(new Date(Number(ms)), "d mmm yyyy Z");
+    const formattedTimestamp = new Date(Number(ms)).toISOString().replace("Z", "");
 
     if (hideNs) {
-      return `${formattedTime}, ${formattedDate}`;
+      return formattedTimestamp;
     } else {
-      return `${formattedTime}${extraNanos}ns, ${formattedDate}`;
+      return `${formattedTimestamp}${extraNanos.toString().padStart(6, "0")}`;
     }
   }
 
-  static humanElapsedToNanoseconds(timestampHuman: string): bigint {
+  static parseHumanElapsed(timestampHuman: string): Timestamp {
     if (!TimeUtils.HUMAN_ELAPSED_TIMESTAMP_REGEX.test(timestampHuman)) {
       throw Error("Invalid elapsed timestamp format");
     }
@@ -98,36 +96,27 @@ export class TimeUtils {
       ns += BigInt(unitData.nanosInUnit) * BigInt(value);
     }
 
-    return ns;
+    return new ElapsedTimestamp(ns);
   }
 
-  static humanRealToNanoseconds(timestampHuman: string): bigint {
+  static parseHumanReal(timestampHuman: string): Timestamp {
     if (!TimeUtils.HUMAN_REAL_TIMESTAMP_REGEX.test(timestampHuman)) {
       throw Error("Invalid real timestamp format");
     }
 
-    const time = timestampHuman.split(",")[0];
-    const date = timestampHuman.split(",")[1];
+    // Add trailing Z if it isn't there yet
+    if (timestampHuman[timestampHuman.length - 1] != "Z") {
+      timestampHuman += "Z";
+    }
 
-    let timeRest = time;
-    const hours = parseInt(timeRest.split("h")[0]);
-    timeRest = time.split("h")[1];
-    const minutes = parseInt(timeRest.split("m")[0]);
-    timeRest = time.split("m")[1];
-    const seconds = parseInt(timeRest.split("s")[0]);
-    timeRest = time.split("s")[1];
-    const milliseconds = parseInt(timeRest.split("ms")[0]);
-    timeRest = time.split("ms")[1];
-    const nanoseconds = parseInt(timeRest);
+    // Date.parse only considers up to millisecond precision
+    let nanoSeconds = 0;
+    if (timestampHuman.includes(".")) {
+      const milliseconds = timestampHuman.split(".")[1].replace("Z", "");
+      nanoSeconds = parseInt(milliseconds.padEnd(9, "0").slice(3));
+    }
 
-    const dateMilliseconds = new Date(date).getTime();
-
-    return BigInt(hours) * BigInt(TimeUtils.TO_NANO["h"]) +
-      BigInt(minutes) * BigInt(TimeUtils.TO_NANO["m"]) +
-      BigInt(seconds) * BigInt(TimeUtils.TO_NANO["s"]) +
-      BigInt(milliseconds) * BigInt(TimeUtils.TO_NANO["ms"]) +
-      BigInt(nanoseconds) * BigInt(TimeUtils.TO_NANO["ns"]) +
-      BigInt(dateMilliseconds) * BigInt(TimeUtils.TO_NANO["ms"]);
+    return new RealTimestamp(BigInt(Date.parse(timestampHuman)) * BigInt(TimeUtils.TO_NANO["ms"]) + BigInt(nanoSeconds));
   }
 
   static TO_NANO = {
@@ -150,6 +139,6 @@ export class TimeUtils {
 
   // (?=.) checks there is at least one character with a lookahead match
   static readonly HUMAN_ELAPSED_TIMESTAMP_REGEX = /^(?=.)([0-9]+d)?([0-9]+h)?([0-9]+m)?([0-9]+s)?([0-9]+ms)?([0-9]+ns)?$/;
-  static readonly HUMAN_REAL_TIMESTAMP_REGEX = /^[0-9]([0-9])?h[0-9]([0-9])?m[0-9]([0-9])?s[0-9]([0-9])?([0-9])?ms[0-9]([0-9])?([0-9])?([0-9])?([0-9])?([0-9])?ns, [0-9]([0-9])? [A-Za-z][A-Za-z][A-Za-z] [0-9][0-9][0-9][0-9]( [A-Za-z][A-Za-z][A-Za-z])?$/;
+  static readonly HUMAN_REAL_TIMESTAMP_REGEX = /^[0-9]{4}-((0[13578]|1[02])-(0[1-9]|[12][0-9]|3[01])|(0[469]|11)-(0[1-9]|[12][0-9]|30)|(02)-(0[1-9]|[12][0-9]))T(0[0-9]|1[0-9]|2[0-3]):(0[0-9]|[1-5][0-9]):(0[0-9]|[1-5][0-9])\.[0-9]{3}([0-9]{6})?Z?$/;
   static readonly NS_TIMESTAMP_REGEX = /^\s*[0-9]+(\s?ns)?\s*$/;
 }

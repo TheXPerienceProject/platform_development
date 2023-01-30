@@ -30,11 +30,10 @@ import { FormControl, FormGroup, Validators} from "@angular/forms";
 import { DomSanitizer, SafeUrl } from "@angular/platform-browser";
 import { TraceType } from "common/trace/trace_type";
 import { TRACE_INFO } from "app/trace_info";
-import { Mediator } from "app/mediator";
+import { TimelineComponentDependencyInversion } from "./timeline_component_dependency_inversion";
 import { TimelineData } from "app/timeline_data";
 import { MiniTimelineComponent } from "./mini_timeline.component";
-import { Timestamp, TimestampType } from "common/trace/timestamp";
-import { FunctionUtils } from "common/utils/function_utils";
+import { ElapsedTimestamp, RealTimestamp, Timestamp, TimestampType } from "common/trace/timestamp";
 import { TimeUtils } from "common/utils/time_utils";
 
 @Component({
@@ -272,7 +271,7 @@ import { TimeUtils } from "common/utils/time_utils";
     }
   `],
 })
-export class TimelineComponent {
+export class TimelineComponent implements TimelineComponentDependencyInversion {
   public readonly TOGGLE_BUTTON_CLASS: string = "button-toggle-expansion";
   public readonly MAX_SELECTED_TRACES = 3;
 
@@ -300,7 +299,6 @@ export class TimelineComponent {
   }
   public wrappedActiveTrace: TraceType|undefined = undefined;
 
-  @Input() mediator!: Mediator;
   @Input() timelineData!: TimelineData;
   @Input() availableTraces: TraceType[] = [];
 
@@ -339,10 +337,6 @@ export class TimelineComponent {
   }
 
   ngOnInit() {
-    this.mediator.setNotifyCurrentTimestampChangedToTimelineComponentCallback((timestamp: Timestamp|undefined) => {
-      this.onCurrentTimestampChanged(timestamp);
-    });
-
     if (this.timelineData.hasTimestamps()) {
       this.updateTimeInputValuesToCurrentTimestamp();
     }
@@ -352,12 +346,6 @@ export class TimelineComponent {
       this.videoUrl =
         this.sanitizer.bypassSecurityTrustUrl(URL.createObjectURL(screenRecordingVideo));
     }
-  }
-
-  ngOnDestroy() {
-    this.mediator.setNotifyCurrentTimestampChangedToTimelineComponentCallback(
-      FunctionUtils.DO_NOTHING
-    );
   }
 
   ngAfterViewInit() {
@@ -410,8 +398,8 @@ export class TimelineComponent {
   }
 
   private updateTimeInputValuesToCurrentTimestamp() {
-    this.selectedElapsedTimeFormControl.setValue(TimeUtils.nanosecondsToHumanElapsed(this.currentTimestamp.getValueNs(), false));
-    this.selectedRealTimeFormControl.setValue(TimeUtils.nanosecondsToHumanReal(this.currentTimestamp.getValueNs()));
+    this.selectedElapsedTimeFormControl.setValue(TimeUtils.format(new ElapsedTimestamp(this.currentTimestamp.getValueNs()), false));
+    this.selectedRealTimeFormControl.setValue(TimeUtils.format(new RealTimestamp(this.currentTimestamp.getValueNs())));
     this.selectedNsFormControl.setValue(`${this.currentTimestamp.getValueNs()} ns`);
   }
 
@@ -486,8 +474,7 @@ export class TimelineComponent {
       return;
     }
     const target = event.target as HTMLInputElement;
-    const timestamp = new Timestamp(this.timelineData.getTimestampType()!,
-      TimeUtils.humanElapsedToNanoseconds(target.value));
+    const timestamp = TimeUtils.parseHumanElapsed(target.value);
     this.timelineData.setCurrentTimestamp(timestamp);
     this.updateTimeInputValuesToCurrentTimestamp();
   }
@@ -498,8 +485,7 @@ export class TimelineComponent {
     }
     const target = event.target as HTMLInputElement;
 
-    const timestamp = new Timestamp(this.timelineData.getTimestampType()!,
-      TimeUtils.humanRealToNanoseconds(target.value));
+    const timestamp = TimeUtils.parseHumanReal(target.value);
     this.timelineData.setCurrentTimestamp(timestamp);
     this.updateTimeInputValuesToCurrentTimestamp();
   }
