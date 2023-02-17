@@ -63,15 +63,11 @@ class DiffStatus {
   Status status_;
 };
 
-template <typename T>
-using DiffStatusPair = std::pair<DiffStatus, T>;
-
-template <typename GenericField, typename GenericFieldDiff>
-struct GenericFieldDiffInfo {
-  DiffStatus diff_status_ = DiffStatus::kNoDiff;
-  std::vector<GenericFieldDiff> diffed_fields_;
-  std::vector<const GenericField *> removed_fields_;
-  std::vector<const GenericField *> added_fields_;
+struct RecordFieldDiffResult {
+  DiffStatus status = DiffStatus::kNoDiff;
+  std::vector<RecordFieldDiffIR> diffed_fields;
+  std::vector<const RecordFieldIR *> removed_fields;
+  std::vector<const RecordFieldIR *> added_fields;
 };
 
 std::string Unwind(const std::deque<std::string> *type_queue);
@@ -140,6 +136,11 @@ class AbiDiffHelper {
                                    std::deque<std::string> *type_queue,
                                    IRDiffDumper::DiffKind diff_kind);
 
+  DiffStatus CompareArrayTypes(const ArrayTypeIR *old_type,
+                               const ArrayTypeIR *new_type,
+                               std::deque<std::string> *type_queue,
+                               IRDiffDumper::DiffKind diff_kind);
+
   DiffStatus ComparePointerTypes(const PointerTypeIR *old_type,
                                  const PointerTypeIR *new_type,
                                  std::deque<std::string> *type_queue,
@@ -177,19 +178,20 @@ class AbiDiffHelper {
   FixupDiffedFieldTypeIds(
       const std::vector<RecordFieldDiffIR> &field_diffs);
 
-  DiffStatusPair<std::unique_ptr<RecordFieldDiffIR>>
-  CompareCommonRecordFields(
-      const RecordFieldIR *old_field,
-      const RecordFieldIR *new_field,
-      std::deque<std::string> *type_queue,
-      IRDiffDumper::DiffKind diff_kind);
+  DiffStatus CompareCommonRecordFields(const RecordFieldIR *old_field,
+                                       const RecordFieldIR *new_field,
+                                       std::deque<std::string> *type_queue,
+                                       IRDiffDumper::DiffKind diff_kind);
 
-  GenericFieldDiffInfo<RecordFieldIR, RecordFieldDiffIR>
-      CompareRecordFields(
+  void FilterOutRenamedRecordFields(
+      std::deque<std::string> *type_queue, DiffMessageIR::DiffKind diff_kind,
+      std::vector<const RecordFieldIR *> &old_fields,
+      std::vector<const RecordFieldIR *> &new_fields);
+
+  RecordFieldDiffResult CompareRecordFields(
       const std::vector<RecordFieldIR> &old_fields,
       const std::vector<RecordFieldIR> &new_fields,
-      std::deque<std::string> *type_queue,
-      IRDiffDumper::DiffKind diff_kind);
+      std::deque<std::string> *type_queue, IRDiffDumper::DiffKind diff_kind);
 
   bool CompareBaseSpecifiers(
       const std::vector<CXXBaseSpecifierIR> &old_base_specifiers,
