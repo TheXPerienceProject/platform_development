@@ -13,13 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import {Component, Input} from '@angular/core';
+import {Component} from '@angular/core';
 import {
   EnableConfiguration,
   SelectionConfiguration,
   TraceConfiguration,
-  TraceConfigurationMap,
 } from 'trace_collection/trace_collection_utils';
+import {TracingConfig} from 'trace_collection/tracing_config';
 
 @Component({
   selector: 'trace-config',
@@ -50,7 +50,7 @@ import {
           class="enable-config"
           [disabled]="!traces[traceKey].run && !traces[traceKey].isTraceCollection"
           [(ngModel)]="enableConfig.enabled"
-          (ngModelChange)="changeTraceCollectionConfig(traces[traceKey])"
+          (change)="changeTraceCollectionConfig(traces[traceKey])"
           >{{ enableConfig.name }}</mat-checkbox
         >
       </div>
@@ -95,7 +95,7 @@ import {
 })
 export class TraceConfigComponent {
   objectKeys = Object.keys;
-  @Input() traces!: TraceConfigurationMap;
+  traces = TracingConfig.getInstance().getTracingConfig();
 
   advancedConfigTraces() {
     const advancedConfigs: string[] = [];
