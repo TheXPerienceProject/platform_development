@@ -25,7 +25,7 @@ import {
 import {TRACE_INFO} from 'app/trace_info';
 import {TracePipeline} from 'app/trace_pipeline';
 import {ProgressListener} from 'interfaces/progress_listener';
-import {LoadedTraceFile} from 'trace/trace_file';
+import {LoadedTrace} from 'trace/loaded_trace';
 import {LoadProgressComponent} from './load_progress_component';
 
 @Component({
@@ -56,14 +56,15 @@ import {LoadProgressComponent} from './load_progress_component';
         </load-progress>
 
         <mat-list
-          *ngIf="!isLoadingFiles && this.tracePipeline.getLoadedTraceFiles().length > 0"
+          *ngIf="!isLoadingFiles && this.tracePipeline.getLoadedTraces().length > 0"
           class="uploaded-files">
-          <mat-list-item *ngFor="let trace of this.tracePipeline.getLoadedTraceFiles()">
+          <mat-list-item *ngFor="let trace of this.tracePipeline.getLoadedTraces()">
             <mat-icon matListIcon>
               {{ TRACE_INFO[trace.type].icon }}
             </mat-icon>
 
-            <p matLine>{{ trace.traceFile.file.name }} ({{ TRACE_INFO[trace.type].name }})</p>
+            <p matLine>{{ TRACE_INFO[trace.type].name }}</p>
+            <p matLine *ngFor="let descriptor of trace.descriptors">{{ descriptor }}</p>
 
             <button color="primary" mat-icon-button (click)="onRemoveTrace($event, trace)">
               <mat-icon>close</mat-icon>
@@ -72,7 +73,7 @@ import {LoadProgressComponent} from './load_progress_component';
         </mat-list>
 
         <div
-          *ngIf="!isLoadingFiles && tracePipeline.getLoadedTraceFiles().length === 0"
+          *ngIf="!isLoadingFiles && tracePipeline.getLoadedTraces().length === 0"
           class="drop-info">
           <p class="mat-body-3 icon">
             <mat-icon inline fontIcon="upload"></mat-icon>
@@ -82,7 +83,7 @@ import {LoadProgressComponent} from './load_progress_component';
       </mat-card-content>
 
       <div
-        *ngIf="!isLoadingFiles && tracePipeline.getLoadedTraceFiles().length > 0"
+        *ngIf="!isLoadingFiles && tracePipeline.getLoadedTraces().length > 0"
         class="trace-actions-container">
         <button
           color="primary"
@@ -235,7 +236,7 @@ export class UploadTracesComponent implements ProgressListener {
     this.filesUploaded.emit(Array.from(droppedFiles));
   }
 
-  onRemoveTrace(event: MouseEvent, trace: LoadedTraceFile) {
+  onRemoveTrace(event: MouseEvent, trace: LoadedTrace) {
     event.preventDefault();
     event.stopPropagation();
     this.tracePipeline.removeTraceFile(trace.type);
