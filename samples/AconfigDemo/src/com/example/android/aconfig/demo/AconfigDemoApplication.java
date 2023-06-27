@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 The Android Open Source Project
+ * Copyright (C) 2023 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,17 +13,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import {browser, by, element} from 'protractor';
-import {E2eTestUtils} from './utils';
 
-describe('winscope', () => {
-  beforeAll(async () => {
-    await E2eTestUtils.checkServerIsUp('Winscope', E2eTestUtils.WINSCOPE_URL);
-    await browser.get(E2eTestUtils.WINSCOPE_URL);
-  });
+package com.example.android.aconfig.demo;
 
-  it('has title', () => {
-    const title = element(by.css('.app-title'));
-    expect(title.getText()).toContain('Winscope');
-  });
-});
+import android.app.Application;
+import com.example.android.aconfig.demo.dagger.ApplicationComponent;
+import com.example.android.aconfig.demo.dagger.DaggerApplicationComponent;
+/**
+ * A minimal "Hello, World!" application.
+ */
+public class AconfigDemoApplication extends Application {
+    ApplicationComponent appComponent = DaggerApplicationComponent.create();
+}
+
