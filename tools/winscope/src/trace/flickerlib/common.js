@@ -42,7 +42,8 @@ const WindowState = require('flicker').android.tools.common.traces.wm.WindowStat
 const WindowToken = require('flicker').android.tools.common.traces.wm.WindowToken;
 
 // SF
-const HwcCompositionType = require('flicker').android.tools.common.traces.surfaceflinger.HwcCompositionType;
+const HwcCompositionType =
+  require('flicker').android.tools.common.traces.surfaceflinger.HwcCompositionType;
 const Layer = require('flicker').android.tools.common.traces.surfaceflinger.Layer;
 const LayerProperties =
   require('flicker').android.tools.common.traces.surfaceflinger.LayerProperties;
@@ -77,10 +78,8 @@ const WmTransitionData = require('flicker').android.tools.common.traces.wm.WmTra
 // Common
 const Size = require('flicker').android.tools.common.datatypes.Size;
 const ActiveBuffer = require('flicker').android.tools.common.datatypes.ActiveBuffer;
-const Color3 = require('flicker').android.tools.common.datatypes.Color3;
 const Color = require('flicker').android.tools.common.datatypes.Color;
 const Insets = require('flicker').android.tools.common.datatypes.Insets;
-const Matrix22 = require('flicker').android.tools.common.datatypes.Matrix22;
 const Matrix33 = require('flicker').android.tools.common.datatypes.Matrix33;
 const PlatformConsts = require('flicker').android.tools.common.PlatformConsts;
 const Rotation = require('flicker').android.tools.common.Rotation;
@@ -94,14 +93,12 @@ const TimestampFactory = require('flicker').android.tools.common.TimestampFactor
 
 const EMPTY_SIZE = Size.Companion.EMPTY;
 const EMPTY_BUFFER = ActiveBuffer.Companion.EMPTY;
-const EMPTY_COLOR3 = Color3.Companion.EMPTY;
 const EMPTY_COLOR = Color.Companion.EMPTY;
 const EMPTY_INSETS = Insets.Companion.EMPTY;
 const EMPTY_RECT = Rect.Companion.EMPTY;
 const EMPTY_RECTF = RectF.Companion.EMPTY;
 const EMPTY_POINT = Point.Companion.EMPTY;
 const EMPTY_POINTF = PointF.Companion.EMPTY;
-const EMPTY_MATRIX22 = Matrix22.Companion.EMPTY;
 const EMPTY_MATRIX33 = Matrix33.Companion.identity(0, 0);
 const EMPTY_TRANSFORM = new Transform(0, EMPTY_MATRIX33);
 
@@ -129,27 +126,17 @@ function toActiveBuffer(proto) {
   return EMPTY_BUFFER;
 }
 
-function toColor3(proto) {
+function toColor(proto, hasAlpha = true) {
   if (proto == null) {
     return EMPTY_COLOR;
   }
   const r = proto.r ?? 0;
   const g = proto.g ?? 0;
   const b = proto.b ?? 0;
-  if (r || g || b) {
-    return new Color3(r, g, b);
+  let a = proto.a;
+  if (a === null && !hasAlpha) {
+    a = 1;
   }
-  return EMPTY_COLOR3;
-}
-
-function toColor(proto) {
-  if (proto == null) {
-    return EMPTY_COLOR;
-  }
-  const r = proto.r ?? 0;
-  const g = proto.g ?? 0;
-  const b = proto.b ?? 0;
-  const a = proto.a ?? 0;
   if (r || g || b || a) {
     return new Color(r, g, b, a);
   }
@@ -206,7 +193,7 @@ function toCropRect(proto) {
   // crop (0,0) (-1,-1) means no crop
   if (right == -1 && left == 0 && bottom == -1 && top == 0) EMPTY_RECT;
 
-  if ((right - left) <= 0 || (bottom - top) <= 0) return EMPTY_RECT;
+  if (right - left <= 0 || bottom - top <= 0) return EMPTY_RECT;
 
   return Rect.Companion.from(left, top, right, bottom);
 }
@@ -278,22 +265,6 @@ function toTransform(proto) {
   return EMPTY_TRANSFORM;
 }
 
-function toMatrix22(proto) {
-  if (proto == null) {
-    return EMPTY_MATRIX22;
-  }
-  const dsdx = proto.dsdx ?? 0;
-  const dtdx = proto.dtdx ?? 0;
-  const dsdy = proto.dsdy ?? 0;
-  const dtdy = proto.dtdy ?? 0;
-
-  if (dsdx || dtdx || dsdy || dtdy) {
-    return new Matrix22(dsdx, dtdx, dsdy, dtdy);
-  }
-
-  return EMPTY_MATRIX22;
-}
-
 export {
   Activity,
   Configuration,
@@ -322,7 +293,6 @@ export {
   LayerTraceEntryBuilder,
   LayersTrace,
   Transform,
-  Matrix22,
   Matrix33,
   Display,
   // Eventlog
@@ -346,7 +316,6 @@ export {
   Size,
   ActiveBuffer,
   Color,
-  Color3,
   Insets,
   PlatformConsts,
   Point,
@@ -361,7 +330,6 @@ export {
   toSize,
   toActiveBuffer,
   toColor,
-  toColor3,
   toCropRect,
   toInsets,
   toPoint,
@@ -369,17 +337,14 @@ export {
   toRect,
   toRectF,
   toRegion,
-  toMatrix22,
   toTransform,
   // Constants
   EMPTY_BUFFER,
-  EMPTY_COLOR3,
   EMPTY_COLOR,
   EMPTY_RECT,
   EMPTY_RECTF,
   EMPTY_POINT,
   EMPTY_POINTF,
-  EMPTY_MATRIX22,
   EMPTY_MATRIX33,
   EMPTY_TRANSFORM,
 };
