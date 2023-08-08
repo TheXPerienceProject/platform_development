@@ -14,8 +14,12 @@
  * limitations under the License.
  */
 
-import {TraceType} from './trace_type';
+package com.example.android.aconfig.demo.dagger;
 
-export class LoadedTrace {
-  constructor(public descriptors: string[], public type: TraceType) {}
+import com.example.android.aconfig.demo.AconfigDemoActivity;
+import dagger.Component;
+
+@Component(modules = {AconfigDemoFlagModule.class})
+public interface ApplicationComponent {
+    void inject(AconfigDemoActivity aconfigDemoActivity);
 }
