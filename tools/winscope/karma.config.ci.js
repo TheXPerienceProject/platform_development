@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021 The Android Open Source Project
+ * Copyright (C) 2023 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,28 +14,16 @@
  * limitations under the License.
  */
 
-syntax = "proto3";
-option optimize_for = LITE_RUNTIME;
+const configCommon = require('./karma.config.common');
 
-import "protos/udc/surfaceflinger/common.proto";
+const configCi = (config) => {
+  config.set({
+    singleRun: true,
+    browsers: ['ChromeHeadless'],
+  });
+};
 
-package android.surfaceflinger;
-
-message DisplayProto {
-    uint64 id = 1;
-
-    string name = 2;
-
-    uint32 layer_stack = 3;
-
-    SizeProto size = 4;
-
-    RectProto layer_stack_space_rect = 5;
-
-    TransformProto transform = 6;
-
-    bool is_virtual = 7;
-
-    double dpi_x = 8;
-    double dpi_y = 9;
-}
+module.exports = (config) => {
+  configCommon(config);
+  configCi(config);
+};
