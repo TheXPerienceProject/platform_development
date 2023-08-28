@@ -14,15 +14,16 @@
  * limitations under the License.
  */
 
+import {AppEvent, AppEventType} from 'app/app_event';
 import {assertDefined} from 'common/assert_utils';
 import {PersistentStoreProxy} from 'common/persistent_store_proxy';
 import {FilterType, TreeUtils} from 'common/tree_utils';
-import {Layer} from 'trace/flickerlib/layers/Layer';
-import {LayerTraceEntry} from 'trace/flickerlib/layers/LayerTraceEntry';
+import {Layer} from 'flickerlib/layers/Layer';
+import {LayerTraceEntry} from 'flickerlib/layers/LayerTraceEntry';
+import {ParserViewCapture} from 'parsers/parser_view_capture';
 import {Trace} from 'trace/trace';
 import {Traces} from 'trace/traces';
 import {TraceEntryFinder} from 'trace/trace_entry_finder';
-import {TracePosition} from 'trace/trace_position';
 import {TraceType} from 'trace/trace_type';
 import {Rectangle, RectMatrix, RectTransform} from 'viewers/common/rectangle';
 import {TreeGenerator} from 'viewers/common/tree_generator';
@@ -101,25 +102,27 @@ export class Presenter {
     this.copyUiDataAndNotifyView();
   }
 
-  async onTracePositionUpdate(position: TracePosition) {
-    this.uiData = new UiData();
-    this.uiData.hierarchyUserOptions = this.hierarchyUserOptions;
-    this.uiData.propertiesUserOptions = this.propertiesUserOptions;
+  async onAppEvent(event: AppEvent) {
+    await event.visit(AppEventType.TRACE_POSITION_UPDATE, async (event) => {
+      this.uiData = new UiData();
+      this.uiData.hierarchyUserOptions = this.hierarchyUserOptions;
+      this.uiData.propertiesUserOptions = this.propertiesUserOptions;
 
-    const entry = TraceEntryFinder.findCorrespondingEntry(this.trace, position);
-    const prevEntry =
-      entry && entry.getIndex() > 0 ? this.trace.getEntry(entry.getIndex() - 1) : undefined;
+      const entry = TraceEntryFinder.findCorrespondingEntry(this.trace, event.position);
+      const prevEntry =
+        entry && entry.getIndex() > 0 ? this.trace.getEntry(entry.getIndex() - 1) : undefined;
 
-    this.entry = (await entry?.getValue()) ?? null;
-    this.previousEntry = (await prevEntry?.getValue()) ?? null;
-    if (this.entry) {
-      this.uiData.highlightedItems = this.highlightedItems;
-      this.uiData.rects = this.generateRects();
-      this.uiData.displayIds = this.displayIds;
-      this.uiData.tree = this.generateTree();
-    }
+      this.entry = (await entry?.getValue()) ?? null;
+      this.previousEntry = (await prevEntry?.getValue()) ?? null;
+      if (this.entry) {
+        this.uiData.highlightedItems = this.highlightedItems;
+        this.uiData.rects = this.generateRects();
+        this.uiData.displayIds = this.displayIds;
+        this.uiData.tree = this.generateTree();
+      }
 
-    this.copyUiDataAndNotifyView();
+      this.copyUiDataAndNotifyView();
+    });
   }
 
   updatePinnedItems(pinnedItem: HierarchyTreeNode) {
@@ -175,8 +178,30 @@ export class Presenter {
   }
 
   private generateRects(): Rectangle[] {
-    const displayRects =
-      this.entry.displays.map((display: any) => {
+    const displayRects = Presenter.getDisplayRects(this.entry);
+    this.displayIds = this.entry.displays.map((it: any) => it.layerStackId);
+    this.displayIds.sort();
+    const rects = Presenter.getRectsViewLayers(this.hierarchyUserOptions, this.entry)
+      .sort(Presenter.compareLayerZ)
+      .map((it: any) => {
+        const rect = it.rect;
+        rect.displayId = it.stackId;
+        rect.cornerRadius = it.cornerRadius;
+        if (!this.displayIds.includes(it.stackId)) {
+          this.displayIds.push(it.stackId);
+        }
+        rect.transform = {
+          matrix: rect.transform.matrix,
+        };
+        return rect;
+      });
+
+    return Presenter.rectsToUiData(rects.concat(displayRects));
+  }
+
+  static getDisplayRects(entry: LayerTraceEntry): any[] {
+    return (
+      entry.displays.map((display: any) => {
         const rect = display.layerStackSpace;
         rect.label = 'Display';
         if (display.name) {
@@ -191,37 +216,20 @@ export class Presenter {
           matrix: display.transform.matrix,
         };
         return rect;
-      }) ?? [];
-    this.displayIds = this.entry.displays.map((it: any) => it.layerStackId);
-    this.displayIds.sort();
-    const rects = this.getLayersForRectsView()
-      .sort(this.compareLayerZ)
-      .map((it: any) => {
-        const rect = it.rect;
-        rect.displayId = it.stackId;
-        rect.cornerRadius = it.cornerRadius;
-        if (!this.displayIds.includes(it.stackId)) {
-          this.displayIds.push(it.stackId);
-        }
-        rect.transform = {
-          matrix: rect.transform.matrix,
-        };
-        return rect;
-      });
-
-    return this.rectsToUiData(rects.concat(displayRects));
+      }) ?? []
+    );
   }
 
-  private getLayersForRectsView(): Layer[] {
-    const onlyVisible = this.hierarchyUserOptions['onlyVisible']?.enabled ?? false;
+  static getRectsViewLayers(hierarchyUserOptions: UserOptions, entry: LayerTraceEntry): Layer[] {
+    const onlyVisible = hierarchyUserOptions['onlyVisible']?.enabled ?? false;
     // Show only visible layers or Visible + Occluded layers. Don't show all layers
     // (flattenedLayers) because container layers are never meant to be displayed
-    return this.entry.flattenedLayers.filter(
+    return entry.flattenedLayers.filter(
       (it: any) => it.isVisible || (!onlyVisible && it.occludedBy.length > 0)
     );
   }
 
-  private compareLayerZ(a: Layer, b: Layer): number {
+  static compareLayerZ(a: Layer, b: Layer): number {
     const zipLength = Math.min(a.zOrderPath.length, b.zOrderPath.length);
     for (let i = 0; i < zipLength; ++i) {
       const zOrderA = a.zOrderPath[i];
@@ -267,7 +275,7 @@ export class Presenter {
     return tree;
   }
 
-  private rectsToUiData(rects: any[]): Rectangle[] {
+  static rectsToUiData(rects: any[]): Rectangle[] {
     const uiRects: Rectangle[] = [];
     rects.forEach((rect: any) => {
       let t = null;
@@ -304,6 +312,10 @@ export class Presenter {
         isVirtual: rect.isVirtual ?? false,
         isClickable: !(rect.isDisplay ?? false),
         cornerRadius: rect.cornerRadius,
+        // TODO(b/291213403): should read this data from the trace instead of a global variable
+        hasContent: ParserViewCapture.packageNames.includes(
+          rect.label.substring(0, rect.label.indexOf('/'))
+        ),
       };
       uiRects.push(newRect);
     });

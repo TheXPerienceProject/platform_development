@@ -14,10 +14,11 @@
  * limitations under the License.
  */
 
+import {AppEvent, AppEventType} from 'app/app_event';
 import {PersistentStoreProxy} from 'common/persistent_store_proxy';
 import {FilterType, TreeUtils} from 'common/tree_utils';
-import {LayerTraceEntry} from 'trace/flickerlib/layers/LayerTraceEntry';
-import {WindowManagerState} from 'trace/flickerlib/windows/WindowManagerState';
+import {LayerTraceEntry} from 'flickerlib/layers/LayerTraceEntry';
+import {WindowManagerState} from 'flickerlib/windows/WindowManagerState';
 import {Trace, TraceEntry} from 'trace/trace';
 import {Traces} from 'trace/traces';
 import {TraceEntryFinder} from 'trace/trace_entry_finder';
@@ -101,24 +102,26 @@ export abstract class PresenterInputMethod {
     this.notifyViewCallback(this.uiData);
   }
 
-  async onTracePositionUpdate(position: TracePosition) {
-    this.uiData = new ImeUiData(this.dependencies);
-    this.uiData.hierarchyUserOptions = this.hierarchyUserOptions;
-    this.uiData.propertiesUserOptions = this.propertiesUserOptions;
+  async onAppEvent(event: AppEvent) {
+    await event.visit(AppEventType.TRACE_POSITION_UPDATE, async (event) => {
+      this.uiData = new ImeUiData(this.dependencies);
+      this.uiData.hierarchyUserOptions = this.hierarchyUserOptions;
+      this.uiData.propertiesUserOptions = this.propertiesUserOptions;
 
-    const [imeEntry, sfEntry, wmEntry] = this.findTraceEntries(position);
+      const [imeEntry, sfEntry, wmEntry] = this.findTraceEntries(event.position);
 
-    if (imeEntry) {
-      this.entry = (await imeEntry.getValue()) as TraceTreeNode;
-      this.uiData.highlightedItems = this.highlightedItems;
-      this.uiData.additionalProperties = this.getAdditionalProperties(
-        await wmEntry?.getValue(),
-        await sfEntry?.getValue()
-      );
-      this.uiData.tree = this.generateTree();
-      this.uiData.hierarchyTableProperties = this.updateHierarchyTableProperties();
-    }
-    this.notifyViewCallback(this.uiData);
+      if (imeEntry) {
+        this.entry = (await imeEntry.getValue()) as TraceTreeNode;
+        this.uiData.highlightedItems = this.highlightedItems;
+        this.uiData.additionalProperties = this.getAdditionalProperties(
+          await wmEntry?.getValue(),
+          await sfEntry?.getValue()
+        );
+        this.uiData.tree = this.generateTree();
+        this.uiData.hierarchyTableProperties = this.updateHierarchyTableProperties();
+      }
+      this.notifyViewCallback(this.uiData);
+    });
   }
 
   updatePinnedItems(pinnedItem: HierarchyTreeNode) {

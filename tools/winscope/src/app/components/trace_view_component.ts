@@ -15,8 +15,12 @@
  */
 
 import {Component, ElementRef, EventEmitter, Inject, Input, Output} from '@angular/core';
+import {AppEvent, AppEventType, TabbedViewSwitched} from 'app/app_event';
 import {TRACE_INFO} from 'app/trace_info';
+import {FunctionUtils} from 'common/function_utils';
 import {PersistentStore} from 'common/persistent_store';
+import {AppEventEmitter, EmitAppEvent} from 'interfaces/app_event_emitter';
+import {AppEventListener} from 'interfaces/app_event_listener';
 import {View, Viewer, ViewType} from 'viewers/viewer';
 
 interface Tab extends View {
@@ -102,11 +106,10 @@ interface Tab extends View {
     `,
   ],
 })
-export class TraceViewComponent {
+export class TraceViewComponent implements AppEventEmitter, AppEventListener {
   @Input() viewers!: Viewer[];
   @Input() store!: PersistentStore;
   @Output() downloadTracesButtonClick = new EventEmitter<void>();
-  @Output() activeViewChanged = new EventEmitter<View>();
 
   TRACE_INFO = TRACE_INFO;
 
@@ -114,6 +117,7 @@ export class TraceViewComponent {
 
   tabs: Tab[] = [];
   private currentActiveTab: undefined | Tab;
+  private emitAppEvent: EmitAppEvent = FunctionUtils.DO_NOTHING_ASYNC;
 
   constructor(@Inject(ElementRef) elementRef: ElementRef) {
     this.elementRef = elementRef;
@@ -124,8 +128,21 @@ export class TraceViewComponent {
     this.renderViewsOverlay();
   }
 
-  onTabClick(tab: Tab) {
-    this.showTab(tab);
+  async onTabClick(tab: Tab) {
+    await this.showTab(tab);
+  }
+
+  async onAppEvent(event: AppEvent) {
+    await event.visit(AppEventType.TABBED_VIEW_SWITCH_REQUEST, async (event) => {
+      const tab = this.tabs.find((tab) => tab.traceType === event.newFocusedViewId);
+      if (tab) {
+        await this.showTab(tab);
+      }
+    });
+  }
+
+  setEmitAppEvent(callback: EmitAppEvent) {
+    this.emitAppEvent = callback;
   }
 
   private renderViewsTab() {
@@ -179,7 +196,7 @@ export class TraceViewComponent {
     });
   }
 
-  private showTab(tab: Tab) {
+  private async showTab(tab: Tab) {
     if (this.currentActiveTab) {
       this.currentActiveTab.htmlElement.style.display = 'none';
     }
@@ -198,7 +215,8 @@ export class TraceViewComponent {
     }
 
     this.currentActiveTab = tab;
-    this.activeViewChanged.emit(tab);
+
+    await this.emitAppEvent(new TabbedViewSwitched(tab));
   }
 
   isCurrentActiveTab(tab: Tab) {
