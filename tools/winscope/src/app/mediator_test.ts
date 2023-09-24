@@ -15,12 +15,12 @@
  */
 
 import {AbtChromeExtensionProtocolStub} from 'abt_chrome_extension/abt_chrome_extension_protocol_stub';
+import {RealTimestamp} from 'common/time';
 import {CrossToolProtocolStub} from 'cross_tool/cross_tool_protocol_stub';
 import {AppEventListenerEmitterStub} from 'interfaces/app_event_listener_emitter_stub';
 import {ProgressListenerStub} from 'interfaces/progress_listener_stub';
 import {MockStorage} from 'test/unit/mock_storage';
 import {UnitTestUtils} from 'test/unit/utils';
-import {RealTimestamp} from 'trace/timestamp';
 import {TraceFile} from 'trace/trace_file';
 import {TracePosition} from 'trace/trace_position';
 import {TraceType} from 'trace/trace_type';
@@ -214,6 +214,20 @@ describe('Mediator', () => {
     );
     expect(timelineComponent.onTracePositionUpdate).toHaveBeenCalledTimes(2);
     expect(crossToolProtocol.sendTimestamp).toHaveBeenCalledTimes(2);
+  });
+
+  it("initializes viewers' trace position also when loaded traces have no valid timestamps", async () => {
+    spyOn(viewerStub, 'onAppEvent');
+
+    const dumpFile = await UnitTestUtils.getFixtureFile('traces/dump_WindowManager.pb');
+    await mediator.onWinscopeFilesUploaded([dumpFile]);
+    await mediator.onWinscopeViewTracesRequest();
+
+    expect(viewerStub.onAppEvent).toHaveBeenCalledOnceWith(
+      jasmine.objectContaining({
+        type: AppEventType.TRACE_POSITION_UPDATE,
+      } as AppEvent)
+    );
   });
 
   describe('timestamp received from remote tool', () => {

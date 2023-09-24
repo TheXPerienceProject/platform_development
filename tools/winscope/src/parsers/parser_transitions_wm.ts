@@ -1,3 +1,4 @@
+import {ElapsedTimestamp, RealTimestamp, Timestamp, TimestampType} from 'common/time';
 import {
   CrossPlatform,
   ShellTransitionData,
@@ -6,13 +7,17 @@ import {
   TransitionType,
   WmTransitionData,
 } from 'flickerlib/common';
-import {ElapsedTimestamp, RealTimestamp, Timestamp, TimestampType} from 'trace/timestamp';
+import {TraceFile} from 'trace/trace_file';
 import {TraceType} from 'trace/trace_type';
 import {AbstractParser} from './abstract_parser';
 import {WmTransitionsTraceFileProto} from './proto_types';
 
 export class ParserTransitionsWm extends AbstractParser {
   private realToElapsedTimeOffsetNs: undefined | bigint;
+
+  constructor(trace: TraceFile) {
+    super(trace);
+  }
 
   override getTraceType(): TraceType {
     return TraceType.WM_TRANSITION;
