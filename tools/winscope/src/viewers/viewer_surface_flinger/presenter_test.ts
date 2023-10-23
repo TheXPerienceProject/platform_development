@@ -77,7 +77,7 @@ describe('PresenterSurfaceFlinger', () => {
     await presenter.onAppEvent(positionUpdate);
 
     expect(uiData.rects.length).toBeGreaterThan(0);
-    expect(uiData.highlightedItems?.length).toEqual(0);
+    expect(uiData.highlightedItem?.length).toEqual(0);
     expect(uiData.displayIds).toContain(0);
     const hierarchyOpts = uiData.hierarchyUserOptions
       ? Object.keys(uiData.hierarchyUserOptions)
@@ -87,6 +87,20 @@ describe('PresenterSurfaceFlinger', () => {
       ? Object.keys(uiData.propertiesUserOptions)
       : null;
     expect(propertyOpts).toBeTruthy();
+    expect(Object.keys(uiData.tree!).length > 0).toBeTrue();
+  });
+
+  it('disables show diff and generates non-diff tree if no prev entry available', async () => {
+    await presenter.onAppEvent(positionUpdate);
+
+    const hierarchyOpts = uiData.hierarchyUserOptions ?? null;
+    expect(hierarchyOpts).toBeTruthy();
+    expect(hierarchyOpts!['showDiff'].isUnavailable).toBeTrue();
+
+    const propertyOpts = uiData.propertiesUserOptions ?? null;
+    expect(propertyOpts).toBeTruthy();
+    expect(propertyOpts!['showDiff'].isUnavailable).toBeTrue();
+
     expect(Object.keys(uiData.tree!).length > 0).toBeTrue();
   });
 
@@ -109,12 +123,20 @@ describe('PresenterSurfaceFlinger', () => {
     expect(uiData.pinnedItems).toContain(pinnedItem);
   });
 
-  it('updates highlighted items', () => {
-    expect(uiData.highlightedItems).toEqual([]);
+  it('updates highlighted item', () => {
+    expect(uiData.highlightedItem).toEqual('');
 
     const id = '4';
-    presenter.updateHighlightedItems(id);
-    expect(uiData.highlightedItems).toContain(id);
+    presenter.updateHighlightedItem(id);
+    expect(uiData.highlightedItem).toBe(id);
+  });
+
+  it('updates highlighted property', () => {
+    expect(uiData.highlightedProperty).toEqual('');
+
+    const id = '4';
+    presenter.updateHighlightedProperty(id);
+    expect(uiData.highlightedProperty).toBe(id);
   });
 
   it('updates hierarchy tree', async () => {
