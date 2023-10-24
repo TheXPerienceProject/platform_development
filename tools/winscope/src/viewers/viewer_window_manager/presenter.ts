@@ -25,11 +25,11 @@ import {Traces} from 'trace/traces';
 import {TraceEntryFinder} from 'trace/trace_entry_finder';
 import {TraceTreeNode} from 'trace/trace_tree_node';
 import {TraceType} from 'trace/trace_type';
-import {Rectangle, RectMatrix, RectTransform} from 'viewers/common/rectangle';
 import {TreeGenerator} from 'viewers/common/tree_generator';
 import {TreeTransformer} from 'viewers/common/tree_transformer';
 import {HierarchyTreeNode, PropertiesTreeNode} from 'viewers/common/ui_tree_utils';
 import {UserOptions} from 'viewers/common/user_options';
+import {Rectangle, TransformMatrix} from 'viewers/components/rects/types2d';
 import {UiData} from './ui_data';
 
 type NotifyViewCallbackType = (uiData: UiData) => void;
@@ -40,8 +40,8 @@ export class Presenter {
   private uiData: UiData;
   private hierarchyFilter: FilterType = TreeUtils.makeNodeFilter('');
   private propertiesFilter: FilterType = TreeUtils.makeNodeFilter('');
-  private highlightedItems: string[] = [];
-  private displayIds: number[] = [];
+  private highlightedItem: string = '';
+  private highlightedProperty: string = '';
   private pinnedItems: HierarchyTreeNode[] = [];
   private pinnedIds: string[] = [];
   private selectedHierarchyTree: HierarchyTreeNode | null = null;
@@ -53,6 +53,7 @@ export class Presenter {
       showDiff: {
         name: 'Show diff',
         enabled: false,
+        isUnavailable: false,
       },
       simplifyNames: {
         name: 'Simplify names',
@@ -75,6 +76,7 @@ export class Presenter {
       showDiff: {
         name: 'Show diff',
         enabled: false,
+        isUnavailable: false,
       },
       showDefaults: {
         name: 'Show defaults',
@@ -97,7 +99,7 @@ export class Presenter {
     this.trace = assertDefined(traces.getTrace(TraceType.WINDOW_MANAGER));
     this.notifyViewCallback = notifyViewCallback;
     this.uiData = new UiData([TraceType.WINDOW_MANAGER]);
-    this.notifyViewCallback(this.uiData);
+    this.copyUiDataAndNotifyView();
   }
 
   updatePinnedItems(pinnedItem: HierarchyTreeNode) {
@@ -109,31 +111,40 @@ export class Presenter {
     }
     this.updatePinnedIds(pinnedId);
     this.uiData.pinnedItems = this.pinnedItems;
-    this.notifyViewCallback(this.uiData);
+    this.copyUiDataAndNotifyView();
   }
 
-  updateHighlightedItems(id: string) {
-    if (this.highlightedItems.includes(id)) {
-      this.highlightedItems = this.highlightedItems.filter((hl) => hl !== id);
+  updateHighlightedItem(id: string) {
+    if (this.highlightedItem === id) {
+      this.highlightedItem = '';
     } else {
-      this.highlightedItems = []; //if multi-select implemented, remove this line
-      this.highlightedItems.push(id);
+      this.highlightedItem = id;
     }
-    this.uiData.highlightedItems = this.highlightedItems;
-    this.notifyViewCallback(this.uiData);
+    this.uiData.highlightedItem = this.highlightedItem;
+    this.copyUiDataAndNotifyView();
+  }
+
+  updateHighlightedProperty(id: string) {
+    if (this.highlightedProperty === id) {
+      this.highlightedProperty = '';
+    } else {
+      this.highlightedProperty = id;
+    }
+    this.uiData.highlightedProperty = this.highlightedProperty;
+    this.copyUiDataAndNotifyView();
   }
 
   updateHierarchyTree(userOptions: UserOptions) {
     this.hierarchyUserOptions = userOptions;
     this.uiData.hierarchyUserOptions = this.hierarchyUserOptions;
     this.uiData.tree = this.generateTree();
-    this.notifyViewCallback(this.uiData);
+    this.copyUiDataAndNotifyView();
   }
 
   filterHierarchyTree(filterString: string) {
     this.hierarchyFilter = TreeUtils.makeNodeFilter(filterString);
     this.uiData.tree = this.generateTree();
-    this.notifyViewCallback(this.uiData);
+    this.copyUiDataAndNotifyView();
   }
 
   updatePropertiesTree(userOptions: UserOptions) {
@@ -154,55 +165,93 @@ export class Presenter {
 
   async onAppEvent(event: AppEvent) {
     await event.visit(AppEventType.TRACE_POSITION_UPDATE, async (event) => {
-      this.uiData = new UiData();
-      this.uiData.hierarchyUserOptions = this.hierarchyUserOptions;
-      this.uiData.propertiesUserOptions = this.propertiesUserOptions;
-
       const entry = TraceEntryFinder.findCorrespondingEntry(this.trace, event.position);
       const prevEntry =
         entry && entry.getIndex() > 0 ? this.trace.getEntry(entry.getIndex() - 1) : undefined;
 
       this.entry = (await entry?.getValue()) ?? null;
       this.previousEntry = (await prevEntry?.getValue()) ?? null;
+      if (this.hierarchyUserOptions['showDiff'].isUnavailable !== undefined) {
+        this.hierarchyUserOptions['showDiff'].isUnavailable = this.previousEntry == null;
+      }
+      if (this.propertiesUserOptions['showDiff'].isUnavailable !== undefined) {
+        this.propertiesUserOptions['showDiff'].isUnavailable = this.previousEntry == null;
+      }
+
+      this.uiData = new UiData();
+      this.uiData.hierarchyUserOptions = this.hierarchyUserOptions;
+      this.uiData.propertiesUserOptions = this.propertiesUserOptions;
+
       if (this.entry) {
-        this.uiData.highlightedItems = this.highlightedItems;
-        this.uiData.rects = this.generateRects();
-        this.uiData.displayIds = this.displayIds;
+        this.uiData.highlightedItem = this.highlightedItem;
+        this.uiData.highlightedProperty = this.highlightedProperty;
+        this.uiData.rects = this.generateRects(this.entry);
+        this.uiData.displayIds = this.getDisplayIds(this.entry);
         this.uiData.tree = this.generateTree();
       }
 
-      this.notifyViewCallback(this.uiData);
+      this.copyUiDataAndNotifyView();
     });
   }
 
-  private generateRects(): Rectangle[] {
+  private generateRects(entry: TraceTreeNode): Rectangle[] {
+    const identityMatrix: TransformMatrix = {
+      dsdx: 1,
+      dsdy: 0,
+      tx: 0,
+      dtdx: 0,
+      dtdy: 1,
+      ty: 0,
+    };
     const displayRects: Rectangle[] =
-      this.entry?.displays?.map((display: DisplayContent) => {
-        const rect = display.displayRect;
-        rect.label = `Display - ${display.title}`;
-        rect.stableId = display.stableId;
-        rect.displayId = display.id;
-        rect.isDisplay = true;
-        rect.cornerRadius = 0;
-        rect.isVirtual = false;
+      entry.displays?.map((display: DisplayContent) => {
+        const rect: Rectangle = {
+          topLeft: {x: display.displayRect.left, y: display.displayRect.top},
+          bottomRight: {x: display.displayRect.right, y: display.displayRect.bottom},
+          label: `Display - ${display.title}`,
+          transform: identityMatrix,
+          isVisible: false, //TODO: check if displayRect.ref.isVisible exists
+          isDisplay: true,
+          id: display.stableId,
+          displayId: display.id,
+          isVirtual: false,
+          isClickable: false,
+          cornerRadius: 0,
+        };
         return rect;
       }) ?? [];
-    this.displayIds = [];
-    const rects: Rectangle[] =
-      this.entry?.windowStates
+
+    const windowRects: Rectangle[] =
+      entry.windowStates
         ?.sort((a: any, b: any) => b.computedZ - a.computedZ)
         .map((it: any) => {
-          const rect = it.rect;
-          rect.id = it.layerId;
-          rect.displayId = it.displayId;
-          rect.cornerRadius = 0;
-          if (!this.displayIds.includes(it.displayId)) {
-            this.displayIds.push(it.displayId);
-          }
+          const rect: Rectangle = {
+            topLeft: {x: it.rect.left, y: it.rect.top},
+            bottomRight: {x: it.rect.right, y: it.rect.bottom},
+            label: it.rect.label,
+            transform: identityMatrix,
+            isVisible: it.isVisible,
+            isDisplay: false,
+            id: it.stableId,
+            displayId: it.displayId,
+            isVirtual: false, //TODO: is this correct?
+            isClickable: true,
+            cornerRadius: 0,
+          };
           return rect;
         }) ?? [];
-    this.displayIds.sort();
-    return this.rectsToUiData(rects.concat(displayRects));
+
+    return windowRects.concat(displayRects);
+  }
+
+  private getDisplayIds(entry: TraceTreeNode): number[] {
+    const ids = new Set<number>();
+    entry.windowStates?.map((it: any) => {
+      ids.add(it.displayId);
+    });
+    return Array.from(ids.values()).sort((a, b) => {
+      return a - b;
+    });
   }
 
   private updateSelectedTreeUiData() {
@@ -211,7 +260,7 @@ export class Presenter {
         this.selectedHierarchyTree
       );
     }
-    this.notifyViewCallback(this.uiData);
+    this.copyUiDataAndNotifyView();
   }
 
   private generateTree() {
@@ -225,7 +274,10 @@ export class Presenter {
       .setIsFlatView(this.hierarchyUserOptions['flat']?.enabled)
       .withUniqueNodeId();
     let tree: HierarchyTreeNode | null;
-    if (!this.hierarchyUserOptions['showDiff']?.enabled) {
+    if (
+      !this.hierarchyUserOptions['showDiff']?.enabled ||
+      this.hierarchyUserOptions['showDiff']?.isUnavailable
+    ) {
       tree = generator.generateTree();
     } else {
       tree = generator
@@ -236,40 +288,6 @@ export class Presenter {
     this.pinnedItems = generator.getPinnedItems();
     this.uiData.pinnedItems = this.pinnedItems;
     return tree;
-  }
-
-  private rectsToUiData(rects: any[]): Rectangle[] {
-    const uiRects: Rectangle[] = [];
-    const identityMatrix: RectMatrix = {
-      dsdx: 1,
-      dsdy: 0,
-      tx: 0,
-      dtdx: 0,
-      dtdy: 1,
-      ty: 0,
-    };
-    rects.forEach((rect: any) => {
-      const transform: RectTransform = {
-        matrix: identityMatrix,
-      };
-
-      const newRect: Rectangle = {
-        topLeft: {x: rect.left, y: rect.top},
-        bottomRight: {x: rect.right, y: rect.bottom},
-        label: rect.label,
-        transform,
-        isVisible: rect.ref?.isVisible ?? false,
-        isDisplay: rect.isDisplay ?? false,
-        ref: rect.ref,
-        id: rect.stableId ?? rect.ref.stableId,
-        displayId: rect.displayId ?? rect.ref.stackId,
-        isVirtual: rect.isVirtual ?? false,
-        isClickable: !rect.isDisplay,
-        cornerRadius: rect.cornerRadius,
-      };
-      uiRects.push(newRect);
-    });
-    return uiRects;
   }
 
   private updatePinnedIds(newId: string) {
@@ -287,11 +305,21 @@ export class Presenter {
     const transformer = new TreeTransformer(selectedTree, this.propertiesFilter)
       .setOnlyProtoDump(true)
       .setIsShowDefaults(this.propertiesUserOptions['showDefaults']?.enabled)
-      .setIsShowDiff(this.propertiesUserOptions['showDiff']?.enabled)
+      .setIsShowDiff(
+        this.propertiesUserOptions['showDiff']?.enabled &&
+          !this.propertiesUserOptions['showDiff']?.isUnavailable
+      )
       .setTransformerOptions({skip: selectedTree.skip})
       .setProperties(this.entry)
       .setDiffProperties(this.previousEntry);
     const transformedTree = transformer.transform();
     return transformedTree;
+  }
+
+  private copyUiDataAndNotifyView() {
+    // Create a shallow copy of the data, otherwise the Angular OnPush change detection strategy
+    // won't detect the new input
+    const copy = Object.assign({}, this.uiData);
+    this.notifyViewCallback(copy);
   }
 }

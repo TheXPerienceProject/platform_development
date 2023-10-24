@@ -15,19 +15,15 @@
  */
 
 import {assertDefined} from 'common/assert_utils';
+import {TimeRange, Timestamp, TimestampType} from 'common/time';
 import {TimeUtils} from 'common/time_utils';
 import {ScreenRecordingUtils} from 'trace/screen_recording_utils';
-import {Timestamp, TimestampType} from 'trace/timestamp';
-import {TraceEntry} from 'trace/trace';
+import {Trace, TraceEntry} from 'trace/trace';
 import {Traces} from 'trace/traces';
 import {TraceEntryFinder} from 'trace/trace_entry_finder';
 import {TracePosition} from 'trace/trace_position';
 import {TraceType} from 'trace/trace_type';
 
-export interface TimeRange {
-  from: Timestamp;
-  to: Timestamp;
-}
 const INVALID_TIMESTAMP = 0n;
 
 export class TimelineData {
@@ -46,14 +42,12 @@ export class TimelineData {
 
     this.traces = new Traces();
     traces.forEachTrace((trace, type) => {
-      if (type === TraceType.WINDOW_MANAGER) {
-        // Filter out WindowManager dumps with no timestamp from timeline
-        if (
-          trace.lengthEntries === 1 &&
-          trace.getEntry(0).getTimestamp().getValueNs() === INVALID_TIMESTAMP
-        ) {
-          return;
-        }
+      // Filter out dumps with invalid timestamp (would mess up the timeline)
+      if (
+        trace.lengthEntries === 1 &&
+        trace.getEntry(0).getTimestamp().getValueNs() === INVALID_TIMESTAMP
+      ) {
+        return;
       }
 
       this.traces.setTrace(type, trace);
@@ -108,6 +102,24 @@ export class TimelineData {
     }
 
     this.explicitlySetPosition = position;
+  }
+
+  makePositionFromActiveTrace(timestamp: Timestamp): TracePosition {
+    let trace: Trace<object> | undefined;
+    if (this.activeViewTraceTypes.length > 0) {
+      trace = this.traces.getTrace(this.activeViewTraceTypes[0]);
+    }
+
+    if (!trace) {
+      return TracePosition.fromTimestamp(timestamp);
+    }
+
+    const entry = trace.findClosestEntry(timestamp);
+    if (!entry) {
+      return TracePosition.fromTimestamp(timestamp);
+    }
+
+    return TracePosition.fromTraceEntry(entry, timestamp);
   }
 
   setActiveViewTraceTypes(types: TraceType[]) {

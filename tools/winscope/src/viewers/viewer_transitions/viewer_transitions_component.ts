@@ -15,9 +15,9 @@
  */
 
 import {Component, ElementRef, Inject, Input} from '@angular/core';
+import {ElapsedTimestamp, TimestampType} from 'common/time';
 import {TimeUtils} from 'common/time_utils';
 import {Transition} from 'flickerlib/common';
-import {ElapsedTimestamp, TimestampType} from 'trace/timestamp';
 import {Terminal} from 'viewers/common/ui_tree_utils';
 import {Events} from './events';
 import {UiData} from './ui_data';
@@ -109,10 +109,7 @@ import {UiData} from './ui_data';
           [isLeaf]="isLeaf"
           [isAlwaysCollapsed]="true">
         </tree-view>
-        <div *ngIf="!uiData.selectedTransitionPropertiesTree">
-          No selected transition.<br />
-          Select the tranitions below.
-        </div>
+        <div *ngIf="!uiData.selectedTransitionPropertiesTree">No selected transition.</div>
       </div>
     </div>
   `,
@@ -121,7 +118,7 @@ import {UiData} from './ui_data';
       .container {
         display: flex;
         flex-grow: 1;
-        flex-direction: column;
+        flex-direction: row;
       }
 
       .entries {
@@ -134,6 +131,7 @@ import {UiData} from './ui_data';
       .container-properties {
         flex: 1;
         padding: 16px;
+        overflow-y: scroll;
       }
 
       .entries .scroll {
@@ -408,7 +406,7 @@ export class ViewerTransitionsComponent {
     return Math.max(...this.assignRowsToTransitions().values());
   }
 
-  private emitEvent(event: string, data: any) {
+  emitEvent(event: string, data: any) {
     const customEvent = new CustomEvent(event, {
       bubbles: true,
       detail: data,

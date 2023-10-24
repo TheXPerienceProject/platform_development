@@ -15,12 +15,12 @@
  */
 
 import {TracePositionUpdate} from 'app/app_event';
+import {RealTimestamp} from 'common/time';
 import {WindowManagerState} from 'flickerlib/common';
 import {HierarchyTreeBuilder} from 'test/unit/hierarchy_tree_builder';
 import {MockStorage} from 'test/unit/mock_storage';
 import {TraceBuilder} from 'test/unit/trace_builder';
 import {UnitTestUtils} from 'test/unit/utils';
-import {RealTimestamp} from 'trace/timestamp';
 import {Trace} from 'trace/trace';
 import {Traces} from 'trace/traces';
 import {TraceType} from 'trace/trace_type';
@@ -86,13 +86,27 @@ describe('PresenterWindowManager', () => {
     const propertyOpts = uiData.propertiesUserOptions
       ? Object.keys(uiData.propertiesUserOptions)
       : null;
-    expect(uiData.highlightedItems?.length).toEqual(0);
+    expect(uiData.highlightedItem?.length).toEqual(0);
     expect(filteredUiDataRectLabels?.length).toEqual(14);
     expect(uiData.displayIds).toContain(0);
     expect(hierarchyOpts).toBeTruthy();
     expect(propertyOpts).toBeTruthy();
 
     // does not check specific tree values as tree generation method may change
+    expect(Object.keys(uiData.tree!).length > 0).toBeTrue();
+  });
+
+  it('disables show diff and generates non-diff tree if no prev entry available', async () => {
+    await presenter.onAppEvent(positionUpdate);
+
+    const hierarchyOpts = uiData.hierarchyUserOptions ?? null;
+    expect(hierarchyOpts).toBeTruthy();
+    expect(hierarchyOpts!['showDiff'].isUnavailable).toBeTrue();
+
+    const propertyOpts = uiData.propertiesUserOptions ?? null;
+    expect(propertyOpts).toBeTruthy();
+    expect(propertyOpts!['showDiff'].isUnavailable).toBeTrue();
+
     expect(Object.keys(uiData.tree!).length > 0).toBeTrue();
   });
 
@@ -117,11 +131,18 @@ describe('PresenterWindowManager', () => {
     expect(uiData.pinnedItems).toContain(pinnedItem);
   });
 
-  it('updates highlighted items', () => {
-    expect(uiData.highlightedItems).toEqual([]);
+  it('updates highlighted item', () => {
+    expect(uiData.highlightedItem).toEqual('');
     const id = '4';
-    presenter.updateHighlightedItems(id);
-    expect(uiData.highlightedItems).toContain(id);
+    presenter.updateHighlightedItem(id);
+    expect(uiData.highlightedItem).toBe(id);
+  });
+
+  it('updates highlighted property', () => {
+    expect(uiData.highlightedProperty).toEqual('');
+    const id = '4';
+    presenter.updateHighlightedProperty(id);
+    expect(uiData.highlightedProperty).toBe(id);
   });
 
   it('updates hierarchy tree', async () => {

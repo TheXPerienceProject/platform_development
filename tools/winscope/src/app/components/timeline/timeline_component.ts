@@ -33,13 +33,13 @@ import {TRACE_INFO} from 'app/trace_info';
 import {assertDefined} from 'common/assert_utils';
 import {FunctionUtils} from 'common/function_utils';
 import {StringUtils} from 'common/string_utils';
+import {ElapsedTimestamp, RealTimestamp, Timestamp, TimestampType} from 'common/time';
 import {TimeUtils} from 'common/time_utils';
 import {
   OnTracePositionUpdate,
   TracePositionUpdateEmitter,
 } from 'interfaces/trace_position_update_emitter';
 import {TracePositionUpdateListener} from 'interfaces/trace_position_update_listener';
-import {ElapsedTimestamp, RealTimestamp, Timestamp, TimestampType} from 'trace/timestamp';
 import {TracePosition} from 'trace/trace_position';
 import {TraceType} from 'trace/trace_type';
 import {MiniTimelineComponent} from './mini-timeline/mini_timeline_component';
@@ -76,11 +76,15 @@ import {MiniTimelineComponent} from './mini-timeline/mini_timeline_component';
             [disabled]="!hasPrevEntry()">
             <mat-icon>chevron_left</mat-icon>
           </button>
-          <form [formGroup]="timestampForm" class="time-selector-form">
+          <form
+            [formGroup]="timestampForm"
+            class="time-selector-form"
+            (focusin)="onInputFocusChange()"
+            (focusout)="onInputFocusChange()">
             <mat-form-field
               class="time-input"
               appearance="fill"
-              (change)="humanElapsedTimeInputChange($event)"
+              (change)="onHumanElapsedTimeInputChange($event)"
               *ngIf="!usingRealtime()">
               <input
                 matInput
@@ -90,7 +94,7 @@ import {MiniTimelineComponent} from './mini-timeline/mini_timeline_component';
             <mat-form-field
               class="time-input"
               appearance="fill"
-              (change)="humanRealTimeInputChanged($event)"
+              (change)="onHumanRealTimeInputChange($event)"
               *ngIf="usingRealtime()">
               <input
                 matInput
@@ -100,7 +104,7 @@ import {MiniTimelineComponent} from './mini-timeline/mini_timeline_component';
             <mat-form-field
               class="time-input"
               appearance="fill"
-              (change)="nanosecondsInputTimeChange($event)">
+              (change)="onNanosecondsInputTimeChange($event)">
               <input matInput name="nsTimeInput" [formControl]="selectedNsFormControl" />
             </mat-form-field>
           </form>
@@ -364,6 +368,8 @@ export class TimelineComponent implements TracePositionUpdateEmitter, TracePosit
 
   TRACE_INFO = TRACE_INFO;
 
+  isTimestampFormFocused = false;
+
   private onTracePositionUpdateCallback: OnTracePositionUpdate = FunctionUtils.DO_NOTHING_ASYNC;
 
   constructor(
@@ -434,7 +440,7 @@ export class TimelineComponent implements TracePositionUpdateEmitter, TracePosit
 
   updateSeekTimestamp(timestamp: Timestamp | undefined) {
     if (timestamp) {
-      this.seekTracePosition = TracePosition.fromTimestamp(timestamp);
+      this.seekTracePosition = this.timelineData.makePositionFromActiveTrace(timestamp);
     } else {
       this.seekTracePosition = undefined;
     }
@@ -480,8 +486,15 @@ export class TimelineComponent implements TracePositionUpdateEmitter, TracePosit
     this.selectedTraces = this.selectedTracesFormControl.value;
   }
 
+  onInputFocusChange() {
+    this.isTimestampFormFocused = !this.isTimestampFormFocused;
+  }
+
   @HostListener('document:keydown', ['$event'])
   async handleKeyboardEvent(event: KeyboardEvent) {
+    if (this.isTimestampFormFocused) {
+      return;
+    }
     if (event.key === 'ArrowLeft') {
       await this.moveToPreviousEntry();
     } else if (event.key === 'ArrowRight') {
@@ -525,29 +538,29 @@ export class TimelineComponent implements TracePositionUpdateEmitter, TracePosit
     await this.onTracePositionUpdateCallback(assertDefined(this.timelineData.getCurrentPosition()));
   }
 
-  async humanElapsedTimeInputChange(event: Event) {
-    if (event.type !== 'change') {
+  async onHumanElapsedTimeInputChange(event: Event) {
+    if (event.type !== 'change' || !this.selectedElapsedTimeFormControl.valid) {
       return;
     }
     const target = event.target as HTMLInputElement;
     const timestamp = TimeUtils.parseHumanElapsed(target.value);
-    await this.updatePosition(TracePosition.fromTimestamp(timestamp));
+    await this.updatePosition(this.timelineData.makePositionFromActiveTrace(timestamp));
     this.updateTimeInputValuesToCurrentTimestamp();
   }
 
-  async humanRealTimeInputChanged(event: Event) {
-    if (event.type !== 'change') {
+  async onHumanRealTimeInputChange(event: Event) {
+    if (event.type !== 'change' || !this.selectedRealTimeFormControl.valid) {
       return;
     }
     const target = event.target as HTMLInputElement;
 
     const timestamp = TimeUtils.parseHumanReal(target.value);
-    await this.updatePosition(TracePosition.fromTimestamp(timestamp));
+    await this.updatePosition(this.timelineData.makePositionFromActiveTrace(timestamp));
     this.updateTimeInputValuesToCurrentTimestamp();
   }
 
-  async nanosecondsInputTimeChange(event: Event) {
-    if (event.type !== 'change') {
+  async onNanosecondsInputTimeChange(event: Event) {
+    if (event.type !== 'change' || !this.selectedNsFormControl.valid) {
       return;
     }
     const target = event.target as HTMLInputElement;
@@ -556,7 +569,7 @@ export class TimelineComponent implements TracePositionUpdateEmitter, TracePosit
       this.timelineData.getTimestampType()!,
       StringUtils.parseBigIntStrippingUnit(target.value)
     );
-    await this.updatePosition(TracePosition.fromTimestamp(timestamp));
+    await this.updatePosition(this.timelineData.makePositionFromActiveTrace(timestamp));
     this.updateTimeInputValuesToCurrentTimestamp();
   }
 }

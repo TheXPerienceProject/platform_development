@@ -15,9 +15,9 @@
  */
 
 import {TraceType, ViewNode} from 'trace/trace_type';
-import {Rectangle} from 'viewers/common/rectangle';
 import {HierarchyTreeNode, PropertiesTreeNode} from 'viewers/common/ui_tree_utils';
 import {UserOptions} from 'viewers/common/user_options';
+import {Rectangle} from 'viewers/components/rects/types2d';
 
 export class UiData {
   readonly dependencies: TraceType[] = [TraceType.VIEW_CAPTURE];
@@ -30,7 +30,7 @@ export class UiData {
     public hierarchyUserOptions: UserOptions,
     public propertiesUserOptions: UserOptions,
     public pinnedItems: HierarchyTreeNode[],
-    public highlightedItems: string[],
+    public highlightedItem: string,
     public propertiesTree: PropertiesTreeNode | null,
     public selectedViewNode: ViewNode
   ) {}

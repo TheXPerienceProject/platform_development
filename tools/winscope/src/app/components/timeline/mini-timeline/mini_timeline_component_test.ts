@@ -27,9 +27,9 @@ import {MatTooltipModule} from '@angular/material/tooltip';
 import {BrowserAnimationsModule} from '@angular/platform-browser/animations';
 import {TimelineData} from 'app/timeline_data';
 import {assertDefined} from 'common/assert_utils';
+import {RealTimestamp} from 'common/time';
 import {TracesBuilder} from 'test/unit/traces_builder';
 import {dragElement} from 'test/utils';
-import {RealTimestamp} from 'trace/timestamp';
 import {TracePosition} from 'trace/trace_position';
 import {TraceType} from 'trace/trace_type';
 import {MiniTimelineComponent} from './mini_timeline_component';
@@ -40,9 +40,12 @@ describe('MiniTimelineComponent', () => {
   let component: MiniTimelineComponent;
   let htmlElement: HTMLElement;
   let timelineData: TimelineData;
+
   const timestamp10 = new RealTimestamp(10n);
   const timestamp20 = new RealTimestamp(20n);
   const timestamp1000 = new RealTimestamp(1000n);
+
+  const position800 = TracePosition.fromTimestamp(new RealTimestamp(800n));
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
@@ -210,8 +213,8 @@ describe('MiniTimelineComponent', () => {
     };
     component.onZoomChanged(initialZoom);
 
-    const cursorPos = 800n;
-    component.timelineData.setPosition(TracePosition.fromTimestamp(new RealTimestamp(cursorPos)));
+    component.timelineData.setPosition(position800);
+    const cursorPos = position800.timestamp.getValueNs();
 
     fixture.detectChanges();
 
@@ -235,7 +238,7 @@ describe('MiniTimelineComponent', () => {
       const curCenter = finalZoom.from.plus(finalZoom.to).div(2n).getValueNs();
       const prevCenter = initialZoom.from.plus(initialZoom.to).div(2n).getValueNs();
 
-      if (prevCenter === cursorPos) {
+      if (prevCenter === position800.timestamp.getValueNs()) {
         expect(curCenter).toBe(prevCenter);
       } else {
         expect(Math.abs(Number(curCenter - cursorPos))).toBeLessThan(
@@ -261,8 +264,8 @@ describe('MiniTimelineComponent', () => {
     };
     component.onZoomChanged(initialZoom);
 
-    const cursorPos = 800n;
-    component.timelineData.setPosition(TracePosition.fromTimestamp(new RealTimestamp(cursorPos)));
+    component.timelineData.setPosition(position800);
+    const cursorPos = position800.timestamp.getValueNs();
 
     fixture.detectChanges();
 
@@ -317,8 +320,8 @@ describe('MiniTimelineComponent', () => {
     };
     component.onZoomChanged(initialZoom);
 
-    const cursorPos = 800n;
-    component.timelineData.setPosition(TracePosition.fromTimestamp(new RealTimestamp(cursorPos)));
+    component.timelineData.setPosition(position800);
+    const cursorPos = position800.timestamp.getValueNs();
 
     fixture.detectChanges();
 

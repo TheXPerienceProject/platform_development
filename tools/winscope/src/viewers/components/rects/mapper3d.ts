@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import {Rectangle, Size} from 'viewers/common/rectangle';
+import {Rectangle, Size} from 'viewers/components/rects/types2d';
 import {
   Box3D,
   ColorType,
@@ -23,7 +23,7 @@ import {
   Point3D,
   Rect3D,
   Scene3D,
-  Transform3D,
+  TransformMatrix,
 } from './types3d';
 
 class Mapper3D {
@@ -37,7 +37,7 @@ class Mapper3D {
   private static readonly ZOOM_FACTOR_MIN = 0.1;
   private static readonly ZOOM_FACTOR_MAX = 8.5;
   private static readonly ZOOM_FACTOR_STEP = 0.2;
-  private static readonly IDENTITY_TRANSFORM: Transform3D = {
+  private static readonly IDENTITY_TRANSFORM: TransformMatrix = {
     dsdx: 1,
     dsdy: 0,
     tx: 0,
@@ -47,7 +47,7 @@ class Mapper3D {
   };
 
   private rects: Rectangle[] = [];
-  private highlightedRectIds: string[] = [];
+  private highlightedRectId: string = '';
   private cameraRotationFactor = Mapper3D.CAMERA_ROTATION_FACTOR_INIT;
   private zSpacingFactor = Mapper3D.Z_SPACING_FACTOR_INIT;
   private zoomFactor = Mapper3D.ZOOM_FACTOR_INIT;
@@ -60,8 +60,8 @@ class Mapper3D {
     this.rects = rects;
   }
 
-  setHighlightedRectIds(ids: string[]) {
-    this.highlightedRectIds = ids;
+  setHighlightedRectId(id: string) {
+    this.highlightedRectId = id;
   }
 
   getCameraRotationFactor(): number {
@@ -207,7 +207,7 @@ class Mapper3D {
         darkFactor,
         colorType: this.getColorType(rect2d),
         isClickable: rect2d.isClickable,
-        transform: this.getTransform(rect2d),
+        transform: rect2d.transform ?? Mapper3D.IDENTITY_TRANSFORM,
       };
       return this.cropOversizedRect(rect, maxDisplaySize);
     });
@@ -217,7 +217,7 @@ class Mapper3D {
 
   private getColorType(rect2d: Rectangle): ColorType {
     let colorType: ColorType;
-    if (this.highlightedRectIds.includes(rect2d.id)) {
+    if (this.highlightedRectId === rect2d.id) {
       colorType = ColorType.HIGHLIGHTED;
     } else if (rect2d.hasContent === true) {
       colorType = ColorType.HAS_CONTENT;
@@ -227,23 +227,6 @@ class Mapper3D {
       colorType = ColorType.NOT_VISIBLE;
     }
     return colorType;
-  }
-
-  private getTransform(rect2d: Rectangle): Transform3D {
-    let transform: Transform3D;
-    if (rect2d.transform?.matrix) {
-      transform = {
-        dsdx: rect2d.transform.matrix.dsdx,
-        dsdy: rect2d.transform.matrix.dsdy,
-        tx: rect2d.transform.matrix.tx,
-        dtdx: rect2d.transform.matrix.dtdx,
-        dtdy: rect2d.transform.matrix.dtdy,
-        ty: rect2d.transform.matrix.ty,
-      };
-    } else {
-      transform = Mapper3D.IDENTITY_TRANSFORM;
-    }
-    return transform;
   }
 
   private getMaxDisplaySize(rects2d: Rectangle[]): Size {
@@ -338,7 +321,7 @@ class Mapper3D {
         z: lineStart.z,
       };
 
-      const isHighlighted = this.highlightedRectIds.includes(rect2d.id);
+      const isHighlighted = this.highlightedRectId === rect2d.id;
 
       const label3d: Label3D = {
         circle: {
@@ -363,7 +346,7 @@ class Mapper3D {
     return labels3d;
   }
 
-  private matMultiply(mat: Transform3D, point: Point3D): Point3D {
+  private matMultiply(mat: TransformMatrix, point: Point3D): Point3D {
     return {
       x: mat.dsdx * point.x + mat.dsdy * point.y + mat.tx,
       y: mat.dtdx * point.x + mat.dtdy * point.y + mat.ty,

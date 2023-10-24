@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import {FileUtils, OnFile} from 'common/file_utils';
+import {Timestamp, TimestampType} from 'common/time';
 import {AppEventEmitter} from 'interfaces/app_event_emitter';
 import {AppEventListener} from 'interfaces/app_event_listener';
 import {BuganizerAttachmentsDownloadEmitter} from 'interfaces/buganizer_attachments_download_emitter';
@@ -27,8 +27,7 @@ import {TraceDataListener} from 'interfaces/trace_data_listener';
 import {TracePositionUpdateEmitter} from 'interfaces/trace_position_update_emitter';
 import {TracePositionUpdateListener} from 'interfaces/trace_position_update_listener';
 import {UserNotificationListener} from 'interfaces/user_notification_listener';
-import {Timestamp, TimestampType} from 'trace/timestamp';
-import {TraceFile} from 'trace/trace_file';
+import {TraceEntry} from 'trace/trace';
 import {TracePosition} from 'trace/trace_position';
 import {Viewer} from 'viewers/viewer';
 import {ViewerFactory} from 'viewers/viewer_factory';
@@ -130,12 +129,12 @@ export class Mediator {
 
   async onWinscopeFilesUploaded(files: File[]) {
     this.currentProgressListener = this.uploadTracesComponent;
-    await this.processFiles(files);
+    await this.tracePipeline.loadFiles(files, this.currentProgressListener);
   }
 
   async onWinscopeFilesCollected(files: File[]) {
     this.currentProgressListener = this.collectTracesComponent;
-    await this.processFiles(files);
+    await this.tracePipeline.loadFiles(files, this.currentProgressListener);
     await this.processLoadedTraceFiles();
   }
 
@@ -230,7 +229,7 @@ export class Mediator {
       return;
     }
 
-    const position = TracePosition.fromTimestamp(timestamp);
+    const position = this.timelineData.makePositionFromActiveTrace(timestamp);
     this.timelineData.setPosition(position);
 
     await this.propagateTracePosition(this.timelineData.getCurrentPosition(), true);
@@ -238,44 +237,20 @@ export class Mediator {
 
   private async processRemoteFilesReceived(files: File[]) {
     this.resetAppToInitialState();
-    await this.processFiles(files);
-  }
-
-  private async processFiles(files: File[]) {
-    let progressMessage = '';
-    const onProgressUpdate = (progressPercentage: number) => {
-      this.currentProgressListener?.onProgressUpdate(progressMessage, progressPercentage);
-    };
-
-    const traceFiles: TraceFile[] = [];
-    const onFile: OnFile = (file: File, parentArchive?: File) => {
-      traceFiles.push(new TraceFile(file, parentArchive));
-    };
-
-    //TODO(b/290183109): push unzip logic into trace pipeline, once the trace
-    // pipeline test will run with Karma. Currently, we can't execute
-    // FileUtils.unzipFilesIfNeeded() within Node.js because of the dependency
-    // on type File (which is Web API stuff).
-    progressMessage = 'Unzipping files...';
-    this.currentProgressListener?.onProgressUpdate(progressMessage, 0);
-    await FileUtils.unzipFilesIfNeeded(files, onFile, onProgressUpdate);
-
-    const parserErrors = await this.tracePipeline.loadTraceFiles(
-      traceFiles,
-      this.currentProgressListener
-    );
-    this.currentProgressListener?.onOperationFinished();
-    this.userNotificationListener?.onParserErrors(parserErrors);
+    await this.tracePipeline.loadFiles(files, this.currentProgressListener);
   }
 
   private async processLoadedTraceFiles() {
     this.currentProgressListener?.onProgressUpdate('Computing frame mapping...', undefined);
 
+    // TODO: move this into the ProgressListener
     // allow the UI to update before making the main thread very busy
     await new Promise<void>((resolve) => setTimeout(resolve, 10));
 
     await this.tracePipeline.buildTraces();
     this.currentProgressListener?.onOperationFinished();
+
+    this.currentProgressListener?.onProgressUpdate('Initializing UI...', undefined);
 
     this.timelineData.initialize(
       this.tracePipeline.getTraces(),
@@ -289,8 +264,8 @@ export class Mediator {
       })
     );
 
-    // Set position as soon as the viewers are created
-    await this.propagateTracePosition(this.timelineData.getCurrentPosition(), true);
+    // Set position to initialize viewers as soon as they are created
+    await this.propagateTracePosition(this.getTracePositionForViewersInitialization(), true);
 
     this.appComponent.onTraceDataLoaded(this.viewers);
     this.isTraceDataVisualized = true;
@@ -298,6 +273,34 @@ export class Mediator {
     if (this.lastRemoteToolTimestampReceived !== undefined) {
       await this.onRemoteTimestampReceived(this.lastRemoteToolTimestampReceived);
     }
+  }
+
+  private getTracePositionForViewersInitialization(): TracePosition | undefined {
+    const position = this.timelineData.getCurrentPosition();
+    if (position) {
+      return position;
+    }
+
+    // TimelineData might not provide a TracePosition because all the loaded traces are
+    // dumps with invalid timestamps (value zero). In this case let's create a TracePosition
+    // out of any entry from the loaded traces (if available).
+    const firstEntries = this.tracePipeline
+      .getTraces()
+      .mapTrace((trace) => {
+        if (trace.lengthEntries > 0) {
+          return trace.getEntry(0);
+        }
+        return undefined;
+      })
+      .filter((entry) => {
+        return entry !== undefined;
+      }) as Array<TraceEntry<object>>;
+
+    if (firstEntries.length > 0) {
+      return TracePosition.fromTraceEntry(firstEntries[0]);
+    }
+
+    return undefined;
   }
 
   private resetAppToInitialState() {
