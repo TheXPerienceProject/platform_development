@@ -32,6 +32,7 @@ import {
   MatDrawerContent,
 } from 'app/components/bottomnav/bottom_drawer_component';
 import {TimelineData} from 'app/timeline_data';
+import {assertDefined} from 'common/assert_utils';
 import {RealTimestamp} from 'common/time';
 import {TracesBuilder} from 'test/unit/traces_builder';
 import {TracePosition} from 'trace/trace_position';
@@ -95,8 +96,7 @@ describe('TimelineComponent', () => {
     component = fixture.componentInstance;
     htmlElement = fixture.nativeElement;
 
-    const timelineData = new TimelineData();
-    component.timelineData = timelineData;
+    component.timelineData = new TimelineData();
   });
 
   it('can be created', () => {
@@ -119,11 +119,11 @@ describe('TimelineComponent', () => {
     );
     expect(expandedTimelineElement).toBeFalsy();
 
-    button!.dispatchEvent(new Event('click'));
+    assertDefined(button).dispatchEvent(new Event('click'));
     expandedTimelineElement = fixture.debugElement.query(By.directive(ExpandedTimelineComponent));
     expect(expandedTimelineElement).toBeTruthy();
 
-    button!.dispatchEvent(new Event('click'));
+    assertDefined(button).dispatchEvent(new Event('click'));
     expandedTimelineElement = fixture.debugElement.query(By.directive(ExpandedTimelineComponent));
     expect(expandedTimelineElement).toBeFalsy();
   });
@@ -143,8 +143,7 @@ describe('TimelineComponent', () => {
 
     // error message shown
     const errorMessageContainer = htmlElement.querySelector('.no-timestamps-msg');
-    expect(errorMessageContainer).toBeTruthy();
-    expect(errorMessageContainer!.textContent).toContain('No timeline to show!');
+    expect(assertDefined(errorMessageContainer).textContent).toContain('No timeline to show!');
   });
 
   it('handles some empty traces', () => {
@@ -286,6 +285,7 @@ describe('TimelineComponent', () => {
     testCurrentTimestampOnButtonClick(prevEntryButton, position90, 90n);
   });
 
+  //TODO(b/304982982): find a way to test via dom interactions, not calling listener directly
   it('performs expected action on arrow key press depending on input form focus', () => {
     loadTraces();
 
@@ -293,18 +293,21 @@ describe('TimelineComponent', () => {
     const spyPrevEntry = spyOn(component, 'moveToPreviousEntry');
 
     component.handleKeyboardEvent(new KeyboardEvent('keydown', {key: 'ArrowRight'}));
-    fixture.detectChanges();
     expect(spyNextEntry).toHaveBeenCalled();
 
-    const formElement = fixture.nativeElement.querySelector('.time-selector-form');
-    formElement.dispatchEvent(new Event('focusin'));
+    const formElement = htmlElement.querySelector('.time-input input');
+    const focusInEvent = new FocusEvent('focusin');
+    Object.defineProperty(focusInEvent, 'target', {value: formElement});
+    component.handleFocusInEvent(focusInEvent);
     fixture.detectChanges();
 
     component.handleKeyboardEvent(new KeyboardEvent('keydown', {key: 'ArrowLeft'}));
     fixture.detectChanges();
     expect(spyPrevEntry).not.toHaveBeenCalled();
 
-    formElement.dispatchEvent(new Event('focusout'));
+    const focusOutEvent = new FocusEvent('focusout');
+    Object.defineProperty(focusOutEvent, 'target', {value: formElement});
+    component.handleFocusOutEvent(focusOutEvent);
     fixture.detectChanges();
 
     component.handleKeyboardEvent(new KeyboardEvent('keydown', {key: 'ArrowLeft'}));
