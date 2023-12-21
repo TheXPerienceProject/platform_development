@@ -173,7 +173,7 @@ fn parse_cargo_metadata(
                         &features,
                         *target_kind,
                         false,
-                    ),
+                    )?,
                     ..Default::default()
                 });
             }
@@ -195,7 +195,7 @@ fn parse_cargo_metadata(
                         &features,
                         *target_kind,
                         true,
-                    ),
+                    )?,
                     ..Default::default()
                 });
             }
@@ -210,8 +210,8 @@ fn get_externs(
     features: &[String],
     target_kind: TargetKind,
     test: bool,
-) -> Vec<Extern> {
-    let mut externs: Vec<Extern> = package
+) -> Result<Vec<Extern>> {
+    let mut externs = package
         .dependencies
         .iter()
         .filter_map(|dependency| {
@@ -220,40 +220,53 @@ fn get_externs(
                 && dependency.kind.as_deref() != Some("build")
                 && (dependency.kind.is_none() || test)
             {
-                let dependency_name = dependency.name.replace('-', "_");
-                Some(Extern {
-                    name: dependency_name.to_owned(),
-                    lib_name: dependency_name.to_owned(),
-                    extern_type: extern_type(packages, &dependency.name),
-                })
+                Some(make_extern(packages, &dependency.name))
             } else {
                 None
             }
         })
-        .collect();
+        .collect::<Result<Vec<Extern>>>()?;
+
     // If there is a library target and this is a binary or integration test, add the library as an
     // extern.
-    if matches!(target_kind, TargetKind::Bin | TargetKind::Test)
-        && package.targets.iter().any(|t| t.kind.contains(&TargetKind::Lib))
-    {
-        let lib_name = package.name.replace('-', "_");
-        externs.push(Extern { name: lib_name.clone(), lib_name, extern_type: ExternType::Rust });
+    if matches!(target_kind, TargetKind::Bin | TargetKind::Test) {
+        for target in &package.targets {
+            if target.kind.contains(&TargetKind::Lib) {
+                let lib_name = target.name.replace('-', "_");
+                externs.push(Extern {
+                    name: lib_name.clone(),
+                    lib_name,
+                    extern_type: ExternType::Rust,
+                });
+            }
+        }
     }
+
     externs.sort();
     externs.dedup();
-    externs
+    Ok(externs)
 }
 
-/// Checks whether the given package is a proc macro.
-fn extern_type(packages: &[PackageMetadata], package_name: &str) -> ExternType {
+fn make_extern(packages: &[PackageMetadata], package_name: &str) -> Result<Extern> {
     let Some(package) = packages.iter().find(|package| package.name == package_name) else {
-        return ExternType::Rust;
+        bail!("package {} not found in metadata", package_name);
     };
-    if package.targets.iter().any(|target| target.kind.contains(&TargetKind::ProcMacro)) {
-        ExternType::ProcMacro
-    } else {
-        ExternType::Rust
-    }
+    let Some(target) = package.targets.iter().find(|target| {
+        target.kind.contains(&TargetKind::Lib) || target.kind.contains(&TargetKind::ProcMacro)
+    }) else {
+        bail!("Package {} didn't have any library or proc-macro targets", package_name);
+    };
+    let lib_name = target.name.replace('-', "_");
+
+    // Check whether the package is a proc macro.
+    let extern_type =
+        if package.targets.iter().any(|target| target.kind.contains(&TargetKind::ProcMacro)) {
+            ExternType::ProcMacro
+        } else {
+            ExternType::Rust
+        };
+
+    Ok(Extern { name: lib_name.clone(), lib_name, extern_type })
 }
 
 /// Given a package ID like
