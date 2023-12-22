@@ -17,34 +17,41 @@
 package com.example.android.vdmdemo.common;
 
 import android.content.Context;
+import android.content.pm.PackageManager;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
+import android.net.NetworkRequest;
+import android.net.wifi.aware.AttachCallback;
+import android.net.wifi.aware.DiscoverySession;
+import android.net.wifi.aware.DiscoverySessionCallback;
+import android.net.wifi.aware.PeerHandle;
+import android.net.wifi.aware.PublishConfig;
+import android.net.wifi.aware.PublishDiscoverySession;
+import android.net.wifi.aware.SubscribeConfig;
+import android.net.wifi.aware.SubscribeDiscoverySession;
+import android.net.wifi.aware.WifiAwareManager;
+import android.net.wifi.aware.WifiAwareNetworkInfo;
+import android.net.wifi.aware.WifiAwareNetworkSpecifier;
+import android.net.wifi.aware.WifiAwareSession;
 import android.os.Build;
+import android.os.Handler;
+import android.os.HandlerThread;
+import android.util.Log;
 
+import androidx.annotation.GuardedBy;
 import androidx.annotation.NonNull;
-
-import com.google.android.gms.nearby.Nearby;
-import com.google.android.gms.nearby.connection.AdvertisingOptions;
-import com.google.android.gms.nearby.connection.BandwidthInfo;
-import com.google.android.gms.nearby.connection.ConnectionInfo;
-import com.google.android.gms.nearby.connection.ConnectionLifecycleCallback;
-import com.google.android.gms.nearby.connection.ConnectionResolution;
-import com.google.android.gms.nearby.connection.ConnectionsClient;
-import com.google.android.gms.nearby.connection.DiscoveredEndpointInfo;
-import com.google.android.gms.nearby.connection.DiscoveryOptions;
-import com.google.android.gms.nearby.connection.EndpointDiscoveryCallback;
-import com.google.android.gms.nearby.connection.Payload;
-import com.google.android.gms.nearby.connection.PayloadCallback;
-import com.google.android.gms.nearby.connection.PayloadTransferUpdate;
-import com.google.android.gms.nearby.connection.Strategy;
 
 import dagger.hilt.android.qualifiers.ApplicationContext;
 
 import java.io.IOException;
-import java.io.PipedInputStream;
-import java.io.PipedOutputStream;
+import java.net.Inet6Address;
+import java.net.ServerSocket;
+import java.net.Socket;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
-import java.util.Objects;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -53,45 +60,65 @@ import javax.inject.Singleton;
 @Singleton
 public class ConnectionManager {
 
+    private static final String TAG = "VdmConnectionManager";
     private static final String CONNECTION_SERVICE_ID = "com.example.android.vdmdemo";
 
     private final RemoteIo mRemoteIo;
 
-    private final ConnectionsClient mClient;
+    @ApplicationContext private final Context mContext;
+    private final ConnectivityManager mConnectivityManager;
+    private final Handler mBackgroundHandler;
+    private final Object mSessionLock = new Object();
+
+    private CompletableFuture<WifiAwareSession> mWifiAwareSessionFuture = new CompletableFuture<>();
+
+    @GuardedBy("mSessionLock")
+    private DiscoverySession mDiscoverySession;
+
+    @GuardedBy("mSessionLock")
+    private boolean mDiscoverySessionInitiated = false;
 
     /** Simple data structure to allow clients to query the current status. */
     public static final class ConnectionStatus {
         public String remoteDeviceName = null;
         public boolean connected = false;
-        public BandwidthInfo bandwidthInfo = null;
     }
 
+    @GuardedBy("mSessionLock")
     private final ConnectionStatus mConnectionStatus = new ConnectionStatus();
 
     /** Simple callback to notify connection and disconnection events. */
     public interface ConnectionCallback {
+        /** The device is ready for connecting to other devices. */
+        default void onInitialized() {}
+
         /** A connection has been initiated. */
         default void onConnecting(String remoteDeviceName) {}
 
         /** A connection has been established. */
         default void onConnected(String remoteDeviceName) {}
 
-        /** The bandwidth of the established connection has changed. */
-        default void onBandwidthChanged(String remoteDeviceName, BandwidthInfo quality) {}
-
         /** The connection has been lost. */
         default void onDisconnected() {}
+
+        /** An unrecoverable error has occurred. */
+        default void onError(String message) {}
     }
 
-    private final List<ConnectionCallback> mConnectionCallbacks =
-            Collections.synchronizedList(new ArrayList<>());
+    @GuardedBy("mConnectionCallbacks")
+    private final List<ConnectionCallback> mConnectionCallbacks = new ArrayList<>();
 
     private final RemoteIo.StreamClosedCallback mStreamClosedCallback = this::disconnect;
 
     @Inject
     ConnectionManager(@ApplicationContext Context context, RemoteIo remoteIo) {
         mRemoteIo = remoteIo;
-        mClient = Nearby.getConnectionsClient(context);
+        mContext = context;
+
+        mConnectivityManager = context.getSystemService(ConnectivityManager.class);
+        final HandlerThread backgroundThread = new HandlerThread("ConnectionThread");
+        backgroundThread.start();
+        mBackgroundHandler = new Handler(backgroundThread.getLooper());
     }
 
     static String getLocalEndpointId() {
@@ -100,164 +127,297 @@ public class ConnectionManager {
 
     /** Registers a listener for connection events. */
     public void addConnectionCallback(ConnectionCallback callback) {
-        mConnectionCallbacks.add(callback);
+        synchronized (mConnectionCallbacks) {
+            mConnectionCallbacks.add(callback);
+        }
     }
 
     /** Registers a listener for connection events. */
     public void removeConnectionCallback(ConnectionCallback callback) {
-        mConnectionCallbacks.remove(callback);
+        synchronized (mConnectionCallbacks) {
+            mConnectionCallbacks.remove(callback);
+        }
     }
 
     /** Returns the current connection status. */
     public ConnectionStatus getConnectionStatus() {
-        return mConnectionStatus;
-    }
-
-    /** Starts advertising so remote devices can discover this device. */
-    public void startAdvertising() {
-        if (mConnectionStatus.connected) {
-            return;
+        synchronized (mSessionLock) {
+            return mConnectionStatus;
         }
-        mClient.startAdvertising(
-                        getLocalEndpointId(),
-                        CONNECTION_SERVICE_ID,
-                        mConnectionLifecycleCallback,
-                        new AdvertisingOptions.Builder()
-                                .setStrategy(Strategy.P2P_POINT_TO_POINT)
-                                .build())
-                .addOnFailureListener(
-                        (Exception e) ->
-                                mConnectionLifecycleCallback.onDisconnected(
-                                        /* endpointId= */ null));
     }
 
-    /** Stops advertising making this device not discoverable. */
-    public void stopAdvertising() {
-        mClient.stopAdvertising();
-    }
-
-    /** Starts discovering remote devices that are advertising. */
-    public void startDiscovery() {
-        if (mConnectionStatus.connected) {
-            return;
+    /** Publish a local service so remote devices can discover this device. */
+    public void startHostSession() {
+        synchronized (mSessionLock) {
+            if (mDiscoverySessionInitiated) {
+                Log.d(TAG, "Session already initiated, ignoring new session request.");
+                return;
+            }
+            mDiscoverySessionInitiated = true;
         }
-        mClient.startDiscovery(
-                        CONNECTION_SERVICE_ID,
-                        mEndpointDiscoveryCallback,
-                        new DiscoveryOptions.Builder()
-                                .setStrategy(Strategy.P2P_POINT_TO_POINT)
-                                .build())
-                .addOnFailureListener(
-                        (Exception e) ->
-                                mConnectionLifecycleCallback.onDisconnected(
-                                        /* endpointId= */ null));
+        var unused = createSession().thenAccept(session -> session.publish(
+                new PublishConfig.Builder().setServiceName(CONNECTION_SERVICE_ID).build(),
+                new HostDiscoverySessionCallback(),
+                mBackgroundHandler));
     }
 
-    /** Stops discovering remote devices. */
-    public void stopDiscovery() {
-        mClient.stopDiscovery();
+    /** Looks for published services from remote devices and subscribes to them. */
+    public void startClientSession() {
+        synchronized (mSessionLock) {
+            if (mDiscoverySessionInitiated) {
+                Log.d(TAG, "Session already initiated, ignoring new session request.");
+                return;
+            }
+            mDiscoverySessionInitiated = true;
+        }
+        var unused = createSession().thenAccept(session -> session.subscribe(
+                new SubscribeConfig.Builder().setServiceName(CONNECTION_SERVICE_ID).build(),
+                new ClientDiscoverySessionCallback(),
+                mBackgroundHandler));
+    }
+
+    private boolean isConnected() {
+        synchronized (mSessionLock) {
+            return mConnectionStatus.connected;
+        }
+    }
+
+    private CompletableFuture<WifiAwareSession> createSession() {
+        if (mWifiAwareSessionFuture.isDone()
+                && !mWifiAwareSessionFuture.isCompletedExceptionally()) {
+            return mWifiAwareSessionFuture;
+        }
+
+        Log.d(TAG, "Creating a new Wifi Aware session.");
+        WifiAwareManager wifiAwareManager = mContext.getSystemService(WifiAwareManager.class);
+        if (!mContext.getPackageManager().hasSystemFeature(PackageManager.FEATURE_WIFI_AWARE)
+                || wifiAwareManager == null
+                || !wifiAwareManager.isAvailable()) {
+            mWifiAwareSessionFuture.completeExceptionally(
+                    new Exception("Wifi Aware is not available."));
+        } else {
+            wifiAwareManager.attach(
+                    new AttachCallback() {
+                        @Override
+                        public void onAttached(WifiAwareSession session) {
+                            Log.d(TAG, "New Wifi Aware attached.");
+                            mWifiAwareSessionFuture.complete(session);
+                        }
+
+                        @Override
+                        public void onAttachFailed() {
+                            mWifiAwareSessionFuture.completeExceptionally(
+                                    new Exception("Failed to attach Wifi Aware session."));
+                        }
+                    },
+                    mBackgroundHandler);
+        }
+        mWifiAwareSessionFuture = mWifiAwareSessionFuture
+                .exceptionally(e -> {
+                    Log.e(TAG, "Failed to create Wifi Aware session", e);
+                    onError("Failed to create Wifi Aware session");
+                    return null;
+                });
+        return mWifiAwareSessionFuture;
     }
 
     /** Explicitly terminate any existing connection. */
     public void disconnect() {
-        mConnectionLifecycleCallback.onDisconnected(mConnectionStatus.remoteDeviceName);
+        Log.d(TAG, "Terminating connections.");
+        synchronized (mSessionLock) {
+            if (mDiscoverySession != null) {
+                Log.d(TAG, "Closing existing discovery session.");
+                mDiscoverySession.close();
+                mDiscoverySession = null;
+                mDiscoverySessionInitiated = false;
+            }
+            mConnectionStatus.remoteDeviceName = null;
+            mConnectionStatus.connected = false;
+            synchronized (mConnectionCallbacks) {
+                for (ConnectionCallback callback : mConnectionCallbacks) {
+                    callback.onDisconnected();
+                }
+            }
+        }
     }
 
-    private final EndpointDiscoveryCallback mEndpointDiscoveryCallback =
-            new EndpointDiscoveryCallback() {
-                @Override
-                public void onEndpointFound(String endpointId, DiscoveredEndpointInfo info) {
-                    if (mConnectionStatus.connected) {
-                        return;
-                    }
-                    mConnectionStatus.remoteDeviceName = info.getEndpointName();
+    private void onSocketAvailable(Socket socket) throws IOException {
+        mRemoteIo.initialize(socket.getInputStream(), mStreamClosedCallback);
+        mRemoteIo.initialize(socket.getOutputStream(), mStreamClosedCallback);
+        synchronized (mSessionLock) {
+            mConnectionStatus.connected = true;
+            synchronized (mConnectionCallbacks) {
+                for (ConnectionCallback callback : mConnectionCallbacks) {
+                    callback.onConnected(mConnectionStatus.remoteDeviceName);
+                }
+            }
+        }
+    }
+
+    private void onInitialized() {
+        Log.d(TAG, "Discovery session initialized.");
+        synchronized (mConnectionCallbacks) {
+            for (ConnectionCallback callback : mConnectionCallbacks) {
+                callback.onInitialized();
+            }
+        }
+    }
+
+    private void onError(String message) {
+        Log.e(TAG, "Error: " + message);
+        synchronized (mConnectionCallbacks) {
+            for (ConnectionCallback callback : mConnectionCallbacks) {
+                callback.onError(message);
+            }
+        }
+    }
+
+    private class VdmDiscoverySessionCallback extends DiscoverySessionCallback {
+
+        @GuardedBy("mSessionLock")
+        private NetworkCallback mNetworkCallback;
+
+        @Override
+        public void onSessionTerminated() {
+            Log.d(TAG, "Discovery session terminated.");
+            synchronized (mSessionLock) {
+                if (mNetworkCallback != null) {
+                    mConnectivityManager.unregisterNetworkCallback(mNetworkCallback);
+                }
+            }
+        }
+
+        void sendLocalEndpointId(PeerHandle peerHandle) {
+            synchronized (mSessionLock) {
+                mDiscoverySession.sendMessage(peerHandle, 0, getLocalEndpointId().getBytes());
+            }
+        }
+
+        void onConnecting(byte[] remoteDeviceName) {
+            synchronized (mSessionLock) {
+                mConnectionStatus.remoteDeviceName = new String(remoteDeviceName);
+                Log.d(TAG, "Connecting to " + mConnectionStatus.remoteDeviceName);
+                synchronized (mConnectionCallbacks) {
                     for (ConnectionCallback callback : mConnectionCallbacks) {
                         callback.onConnecting(mConnectionStatus.remoteDeviceName);
                     }
-                    mClient.requestConnection(
-                                    getLocalEndpointId(), endpointId, mConnectionLifecycleCallback)
-                            .addOnFailureListener(
-                                    (Exception e) ->
-                                            mConnectionLifecycleCallback.onDisconnected(
-                                                    endpointId));
+                }
+            }
+        }
+
+        @GuardedBy("mSessionLock")
+        void requestNetworkLocked(
+                PeerHandle peerHandle, Optional<Integer> port, NetworkCallback networkCallback) {
+            WifiAwareNetworkSpecifier.Builder networkSpecifierBuilder =
+                    new WifiAwareNetworkSpecifier.Builder(mDiscoverySession, peerHandle)
+                            .setPskPassphrase(CONNECTION_SERVICE_ID);
+            port.ifPresent(networkSpecifierBuilder::setPort);
+
+            NetworkRequest networkRequest =
+                    new NetworkRequest.Builder()
+                            .addTransportType(NetworkCapabilities.TRANSPORT_WIFI_AWARE)
+                            .setNetworkSpecifier(networkSpecifierBuilder.build())
+                            .build();
+            mNetworkCallback = networkCallback;
+            Log.d(TAG, "Requesting network");
+            mConnectivityManager.requestNetwork(networkRequest, mNetworkCallback);
+        }
+    }
+
+    private final class HostDiscoverySessionCallback extends VdmDiscoverySessionCallback {
+
+        @Override
+        public void onPublishStarted(@NonNull PublishDiscoverySession session) {
+            synchronized (mSessionLock) {
+                mDiscoverySession = session;
+                onInitialized();
+            }
+        }
+
+        @Override
+        public void onMessageReceived(PeerHandle peerHandle, byte[] message) {
+            Log.d(TAG, "Received message: " + new String(message));
+            synchronized (mSessionLock) {
+                if (isConnected()) {
+                    return;
                 }
 
-                @Override
-                public void onEndpointLost(String endpointId) {
-                    if (mConnectionStatus.connected) {
-                        return;
-                    }
-                    mConnectionLifecycleCallback.onDisconnected(endpointId);
+                onConnecting(message);
+
+                try {
+                    ServerSocket serverSocket = new ServerSocket(0);
+                    requestNetworkLocked(
+                            peerHandle,
+                            Optional.of(serverSocket.getLocalPort()),
+                            new NetworkCallback());
+                    sendLocalEndpointId(peerHandle);
+                    onSocketAvailable(serverSocket.accept());
+                } catch (IOException e) {
+                    onError("Failed to establish connection.");
                 }
-            };
+            }
+        }
+    }
 
-    private final ConnectionLifecycleCallback mConnectionLifecycleCallback =
-            new ConnectionLifecycleCallback() {
+    private final class ClientDiscoverySessionCallback extends VdmDiscoverySessionCallback {
 
-                @Override
-                public void onConnectionInitiated(
-                        String endpointId, ConnectionInfo connectionInfo) {
-                    mConnectionStatus.remoteDeviceName = connectionInfo.getEndpointName();
-                    for (ConnectionCallback callback : mConnectionCallbacks) {
-                        callback.onConnecting(mConnectionStatus.remoteDeviceName);
-                    }
-                    mClient.acceptConnection(
-                            endpointId,
-                            new PayloadCallback() {
-                                @Override
-                                public void onPayloadReceived(String endpointId, Payload payload) {
-                                    mRemoteIo.initialize(
-                                            Objects.requireNonNull(payload.asStream())
-                                                    .asInputStream(),
-                                            mStreamClosedCallback);
-                                }
+        @Override
+        public void onSubscribeStarted(@NonNull SubscribeDiscoverySession session) {
+            synchronized (mSessionLock) {
+                mDiscoverySession = session;
+                onInitialized();
+            }
+        }
 
-                                @Override
-                                public void onPayloadTransferUpdate(
-                                        String endpointId, PayloadTransferUpdate update) {}
-                            });
+        @Override
+        public void onServiceDiscovered(
+                PeerHandle peerHandle, byte[] serviceSpecificInfo, List<byte[]> matchFilter) {
+            Log.d(TAG, "Discovered service: " + new String(serviceSpecificInfo));
+            sendLocalEndpointId(peerHandle);
+        }
+
+        @Override
+        public void onMessageReceived(PeerHandle peerHandle, byte[] message) {
+            Log.d(TAG, "Received message: " + new String(message));
+            synchronized (mSessionLock) {
+                if (isConnected()) {
+                    return;
                 }
+                onConnecting(message);
+                requestNetworkLocked(
+                        peerHandle, /* port= */ Optional.empty(), new ClientNetworkCallback());
+            }
+        }
+    }
 
-                @Override
-                public void onConnectionResult(String endpointId, ConnectionResolution result) {
-                    if (!result.getStatus().isSuccess()) {
-                        onDisconnected(endpointId);
-                        return;
-                    }
-                    PipedOutputStream outputStream = new PipedOutputStream();
-                    try {
-                        PipedInputStream inputStream = new PipedInputStream(outputStream);
-                        mClient.sendPayload(endpointId, Payload.fromStream(inputStream));
-                        mRemoteIo.initialize(outputStream, mStreamClosedCallback);
-                        for (ConnectionCallback callback : mConnectionCallbacks) {
-                            callback.onConnected(mConnectionStatus.remoteDeviceName);
-                        }
-                        mConnectionStatus.connected = true;
-                    } catch (IOException e) {
-                        throw new AssertionError("Unhandled exception", e);
-                    }
-                }
+    private class NetworkCallback extends ConnectivityManager.NetworkCallback {
 
-                @Override
-                public void onBandwidthChanged(
-                        String endpointId, @NonNull BandwidthInfo bandwidthInfo) {
-                    mConnectionStatus.bandwidthInfo = bandwidthInfo;
-                    for (ConnectionCallback callback : mConnectionCallbacks) {
-                        callback.onBandwidthChanged(
-                                mConnectionStatus.remoteDeviceName,
-                                mConnectionStatus.bandwidthInfo);
-                    }
-                }
+        @Override
+        public void onLost(@NonNull Network network) {
+            disconnect();
+        }
+    }
 
-                @Override
-                public void onDisconnected(String endpointId) {
-                    mClient.stopAllEndpoints();
-                    mConnectionStatus.remoteDeviceName = null;
-                    mConnectionStatus.bandwidthInfo = null;
-                    mConnectionStatus.connected = false;
-                    for (ConnectionCallback callback : mConnectionCallbacks) {
-                        callback.onDisconnected();
-                    }
-                }
-            };
+    private class ClientNetworkCallback extends NetworkCallback {
+
+        @Override
+        public void onCapabilitiesChanged(@NonNull Network network,
+                @NonNull NetworkCapabilities networkCapabilities) {
+            if (isConnected()) {
+                return;
+            }
+
+            WifiAwareNetworkInfo peerAwareInfo =
+                    (WifiAwareNetworkInfo) networkCapabilities.getTransportInfo();
+            Inet6Address peerIpv6 = peerAwareInfo.getPeerIpv6Addr();
+            int peerPort = peerAwareInfo.getPort();
+            try {
+                Socket socket = network.getSocketFactory().createSocket(peerIpv6, peerPort);
+                onSocketAvailable(socket);
+            } catch (IOException e) {
+                Log.e(TAG, "Failed to establish connection.", e);
+                onError("Failed to establish connection.");
+            }
+        }
+    }
 }

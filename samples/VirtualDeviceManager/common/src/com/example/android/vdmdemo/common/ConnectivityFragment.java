@@ -16,42 +16,23 @@
 
 package com.example.android.vdmdemo.common;
 
-import static android.content.pm.PackageManager.PERMISSION_DENIED;
-
-import android.Manifest.permission;
+import android.app.Activity;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.util.TypedValue;
 import android.view.View;
 import android.widget.TextView;
 
+import androidx.annotation.NonNull;
 import androidx.fragment.app.Fragment;
 
-import com.google.android.gms.nearby.connection.BandwidthInfo;
-import com.google.android.gms.nearby.connection.BandwidthInfo.Quality;
-import com.google.common.collect.ImmutableSet;
-
 import dagger.hilt.android.AndroidEntryPoint;
-
-import java.util.ArrayList;
-import java.util.List;
 
 import javax.inject.Inject;
 
 /** Fragment that holds the connectivity status UI. */
 @AndroidEntryPoint(Fragment.class)
 public final class ConnectivityFragment extends Hilt_ConnectivityFragment {
-
-    private static final int REQUIRE_PERMISSIONS_FOR_APP_REQUEST_CODE = 0;
-
-    private static final ImmutableSet<String> REQUIRED_PERMISSIONS_FOR_APP =
-            ImmutableSet.of(
-                    permission.BLUETOOTH_SCAN,
-                    permission.BLUETOOTH_ADVERTISE,
-                    permission.BLUETOOTH_CONNECT,
-                    permission.ACCESS_WIFI_STATE,
-                    permission.CHANGE_WIFI_STATE,
-                    permission.NEARBY_WIFI_DEVICES);
 
     @Inject ConnectionManager mConnectionManager;
 
@@ -61,27 +42,28 @@ public final class ConnectivityFragment extends Hilt_ConnectivityFragment {
     private final ConnectionManager.ConnectionCallback mConnectionCallback =
             new ConnectionManager.ConnectionCallback() {
                 @Override
+                public void onInitialized() {
+                    updateStatus(mDefaultBackgroundColor, R.string.initialized);
+                }
+
+                @Override
                 public void onConnecting(String remoteDeviceName) {
-                    mStatus.setText(getContext().getString(R.string.connecting, remoteDeviceName));
+                    updateStatus(mDefaultBackgroundColor, R.string.connecting, remoteDeviceName);
                 }
 
                 @Override
                 public void onConnected(String remoteDeviceName) {
-                    mStatus.setBackgroundColor(Color.GREEN);
-                }
-
-                @Override
-                public void onBandwidthChanged(
-                        String remoteDeviceName, BandwidthInfo bandwidthInfo) {
-                    String quality = bandwidthQualityToString(bandwidthInfo.getQuality());
-                    mStatus.setText(
-                            getContext().getString(R.string.connected, remoteDeviceName, quality));
+                    updateStatus(Color.GREEN, R.string.connected, remoteDeviceName);
                 }
 
                 @Override
                 public void onDisconnected() {
-                    mStatus.setBackgroundColor(mDefaultBackgroundColor);
-                    mStatus.setText(getContext().getString(R.string.disconnected));
+                    updateStatus(mDefaultBackgroundColor, R.string.disconnected);
+                }
+
+                @Override
+                public void onError(String message) {
+                    updateStatus(Color.RED, R.string.error, message);
                 }
             };
 
@@ -90,10 +72,10 @@ public final class ConnectivityFragment extends Hilt_ConnectivityFragment {
     }
 
     @Override
-    public void onViewCreated(View view, Bundle bundle) {
+    public void onViewCreated(@NonNull View view, Bundle bundle) {
         super.onViewCreated(view, bundle);
 
-        mStatus = getActivity().findViewById(R.id.connection_status);
+        mStatus = requireActivity().requireViewById(R.id.connection_status);
 
         TypedValue background = new TypedValue();
         getActivity()
@@ -108,10 +90,8 @@ public final class ConnectivityFragment extends Hilt_ConnectivityFragment {
 
         ConnectionManager.ConnectionStatus connectionStatus =
                 mConnectionManager.getConnectionStatus();
-        if (connectionStatus.bandwidthInfo != null) {
+        if (connectionStatus.connected) {
             mConnectionCallback.onConnected(connectionStatus.remoteDeviceName);
-            mConnectionCallback.onBandwidthChanged(
-                    connectionStatus.remoteDeviceName, connectionStatus.bandwidthInfo);
         } else if (connectionStatus.remoteDeviceName != null) {
             mConnectionCallback.onConnecting(connectionStatus.remoteDeviceName);
         } else {
@@ -119,7 +99,6 @@ public final class ConnectivityFragment extends Hilt_ConnectivityFragment {
         }
 
         mConnectionManager.addConnectionCallback(mConnectionCallback);
-        requestPermissionsIfNeeded();
     }
 
     @Override
@@ -128,27 +107,11 @@ public final class ConnectivityFragment extends Hilt_ConnectivityFragment {
         mConnectionManager.removeConnectionCallback(mConnectionCallback);
     }
 
-    private void requestPermissionsIfNeeded() {
-        List<String> permissionsToBeRequested = new ArrayList<>();
-        for (String permission : REQUIRED_PERMISSIONS_FOR_APP) {
-            if (getActivity().checkSelfPermission(permission) == PERMISSION_DENIED) {
-                permissionsToBeRequested.add(permission);
-            }
-        }
-        if (!permissionsToBeRequested.isEmpty()) {
-            getActivity()
-                    .requestPermissions(
-                            permissionsToBeRequested.toArray(new String[0]),
-                            REQUIRE_PERMISSIONS_FOR_APP_REQUEST_CODE);
-        }
-    }
-
-    private static String bandwidthQualityToString(@Quality int quality) {
-        return switch (quality) {
-            case Quality.LOW -> "LOW";
-            case Quality.MEDIUM -> "MEDIUM";
-            case Quality.HIGH -> "HIGH";
-            default -> "UNKNOWN[" + quality + "]";
-        };
+    private void updateStatus(int backgroundColor, int resId, Object... formatArgs) {
+        Activity activity = requireActivity();
+        activity.runOnUiThread(() -> {
+            mStatus.setText(activity.getString(resId, formatArgs));
+            mStatus.setBackgroundColor(backgroundColor);
+        });
     }
 }
