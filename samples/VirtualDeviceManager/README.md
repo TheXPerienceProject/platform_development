@@ -38,7 +38,9 @@ The VDM Demo contains 3 apps:
 *   An Android device running Android 13 or newer to act as a client device.
 
 *   A *rooted* Android device running Android 14 or newer (e.g. a `userdebug` or
-    `eng` build) to act as a host device.
+    `eng` build) to act as a host device. Even though VDM is available starting
+    Android 13, the support there is minimal and the Host app is not compatible
+    with Android 13.
 
 *   Both devices need to support
     [Wi-Fi Aware](https://developer.android.com/develop/connectivity/wifi/wifi-aware)
@@ -174,10 +176,10 @@ show a launcher-like list of installed apps on the host device.
     streaming role, with all differences in policies that this entails. \
     *Changing this will recreate the virtual device.*
 
--   **Include streamed apps in recents**: Whether streamed apps should show up
-    in the host device's recent apps. Run the commands below to enable this
-    functionality. \
-    *This can be changed dynamically.*
+-   **Hide streamed app from recents**: Whether streamed apps should show up
+    in the host device's recent apps. Run the commands below to make this
+    functionality dynamic. \
+    *This can be changed dynamically starting with Android V.*
 
     ```shell
     adb shell device_config put virtual_devices android.companion.virtual.flags.dynamic_policy true
@@ -191,6 +193,7 @@ show a launcher-like list of installed apps on the host device.
     *This can be changed dynamically.*
 
     ```shell
+    adb shell device_config put virtual_devices android.companion.virtual.flags.dynamic_policy true
     adb shell device_config put virtual_devices android.companion.virtual.flags.cross_device_clipboard true
     adb shell am force-stop com.example.android.vdmdemo.host
     ```
@@ -248,6 +251,17 @@ show a launcher-like list of installed apps on the host device.
 -   **Display IME policy**: Choose the IME behavior on remote displays. Run the
     commands below to enable this functionality. \
     *This can be changed dynamically.*
+
+    ```shell
+    adb shell device_config put virtual_devices android.companion.virtual.flags.vdm_custom_ime true
+    adb shell am force-stop com.example.android.vdmdemo.host
+    ```
+
+-   **Use the native client IME**: Enables the native client IME instead of
+    streaming the host's IME on the virtual displays. Requires the *Display IME
+    Policy* to be set to *Show IME on the remote display*. Run the commands
+    below to enable this functionality. \
+    *Changing this will recreate the virtual device.*
 
     ```shell
     adb shell device_config put virtual_devices android.companion.virtual.flags.vdm_custom_ime true
@@ -333,3 +347,66 @@ display, if the mouse pointer is currently positioned on a streamed display.
     streamed activities are ignored.
 
 <!-- LINT.ThenChange(README.md) -->
+
+## SDK Version
+
+### Android 15 / Vanilla Ice Cream / SDK level 35
+
+-   Added support for cross-device clipboard.
+
+-   Added support for custom home activities.
+
+-   Added support for custom IME component.
+
+-   Added support for per-display IME policy.
+
+-   Added support for fixed orientation displays (disable display rotation).
+
+-   Added support for mirroring the default display on the virtual device.
+
+-   Added support for dynamic policy changes, so the device does not need to be
+    recreated.
+
+-   Improved support for displays that support home activities. Removed
+    navigation bar and added support for normal home intents.
+
+-   Improved handling of vibrating requests originating from virtual devices.
+
+-   Improved multi-display mouse support.
+
+-   Fixed bugs with hiding streamed apps from the host's recent apps.
+
+### Android 14 / Upside Down Cake / SDK level 34
+
+-   Added support for virtual sensors.
+
+-   Added device awareness to contexts.
+
+-   Added support for clipboard on the virtual device.
+
+-   Added support for hiding streamed apps from the host's recent apps.
+
+-   Added `COMPANION_DEVICE_NEARBY_DEVICE_STREAMING` device profile.
+
+-   Added support for virtual navigation input: D-Pad and navigation touchpad.
+
+-   Improved support for audio, allowing routing to be based on the origin
+    context.
+
+-   Improved support for creation of virtual displays and input devices.
+
+-   Improved handling of virtual touch events.
+
+### Android 13 / Tiramisu / SDK level 33
+
+-   Added support for virtual audio device.
+
+-   Added support for hiding the mouse pointer icon.
+
+-   Added support for virtual mouse, keyboard, touchscreen.
+
+-   Added support for always unlocked displays.
+
+-   Added `COMPANION_DEVICE_APP_STREAMING` device profile.
+
+-   Added support for virtual device creation.
