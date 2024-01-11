@@ -14,14 +14,14 @@
  * limitations under the License.
  */
 
-import root from 'protos/test/fake_proto/root';
+import {fakeProtoTestJson} from 'test/protos/proto_types';
 import {FakeProtoTransformer} from './fake_proto_transformer';
 
 describe('FakeProtoTransformer', () => {
   let transformer: FakeProtoTransformer;
 
   beforeAll(() => {
-    transformer = new FakeProtoTransformer(root.lookupType('Entry'));
+    transformer = new FakeProtoTransformer(fakeProtoTestJson, 'RootMessage', 'entry');
   });
 
   it('sets default value (0) of number fields', () => {

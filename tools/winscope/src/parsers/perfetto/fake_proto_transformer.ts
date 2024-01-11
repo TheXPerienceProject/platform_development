@@ -18,13 +18,19 @@ import * as protobuf from 'protobufjs';
 import {FakeProto} from './fake_proto_builder';
 
 export class FakeProtoTransformer {
-  constructor(private readonly rootMessageType: protobuf.Type) {}
+  private root: protobuf.Root;
+  private rootField: protobuf.Field;
 
-  transform(proto: FakeProto): FakeProto {
-    return this.transformMessageRec(proto, this.rootMessageType);
+  constructor(protoDefinitionJson: protobuf.INamespace, parentType: string, fieldName: string) {
+    this.root = protobuf.Root.fromJSON(protoDefinitionJson);
+    this.rootField = this.root.lookupType(parentType).fields[fieldName];
   }
 
-  private transformFieldRec(proto: FakeProto, field: protobuf.Field): FakeProto {
+  transform(proto: FakeProto): FakeProto {
+    return this.transformRec(proto, this.rootField);
+  }
+
+  private transformRec(proto: FakeProto, field: protobuf.Field): FakeProto {
     // Leaf (primitive type)
     if (!field.repeated) {
       switch (field.type) {
@@ -69,10 +75,7 @@ export class FakeProtoTransformer {
       field.resolvedType instanceof protobuf.Enum &&
       field.resolvedType.valuesById
     ) {
-      if (typeof proto === 'string') {
-        return proto;
-      }
-      return field.resolvedType.valuesById[Number(proto ?? 0)];
+      return field.resolvedType.valuesById[Number(proto)];
     }
 
     // Leaf (enum)
@@ -94,28 +97,23 @@ export class FakeProtoTransformer {
 
     let protoType: protobuf.Type | undefined;
     try {
-      protoType = this.rootMessageType.lookupType(field.type);
+      protoType = this.root.lookupType(field.type);
     } catch (e) {
       return proto;
     }
 
-    // Field is message -> continue recursion
-    return this.transformMessageRec(proto, protoType);
-  }
-
-  private transformMessageRec(proto: FakeProto, messageType: protobuf.Type): FakeProto {
-    for (const childName in messageType.fields) {
-      if (!Object.prototype.hasOwnProperty.call(messageType.fields, childName)) {
+    for (const childName in protoType.fields) {
+      if (!Object.prototype.hasOwnProperty.call(protoType.fields, childName)) {
         continue;
       }
-      const childField = messageType.fields[childName];
+      const childField = protoType.fields[childName];
 
       if (Array.isArray(proto[childName])) {
         for (let i = 0; i < proto[childName].length; ++i) {
-          proto[childName][i] = this.transformFieldRec(proto[childName][i], childField);
+          proto[childName][i] = this.transformRec(proto[childName][i], childField);
         }
       } else {
-        proto[childName] = this.transformFieldRec(proto[childName], childField);
+        proto[childName] = this.transformRec(proto[childName], childField);
       }
     }
 

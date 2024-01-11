@@ -16,8 +16,7 @@
 import {assertDefined, assertTrue} from 'common/assert_utils';
 import {TimestampType} from 'common/time';
 import {LayerTraceEntry} from 'flickerlib/layers/LayerTraceEntry';
-import root from 'protos/surfaceflinger/latest/root';
-import {perfetto} from 'protos/surfaceflinger/latest/types';
+import {winscopeJson} from 'parsers/proto_types';
 import {
   CustomQueryParserResultTypeMap,
   CustomQueryType,
@@ -28,15 +27,17 @@ import {TraceFile} from 'trace/trace_file';
 import {TraceType} from 'trace/trace_type';
 import {WasmEngineProxy} from 'trace_processor/wasm_engine_proxy';
 import {AbstractParser} from './abstract_parser';
-import {FakeProtoBuilder} from './fake_proto_builder';
+import {FakeProto, FakeProtoBuilder} from './fake_proto_builder';
 import {FakeProtoTransformer} from './fake_proto_transformer';
 import {Utils} from './utils';
 
 export class ParserSurfaceFlinger extends AbstractParser<LayerTraceEntry> {
   private layersSnapshotProtoTransformer = new FakeProtoTransformer(
-    root.lookupType('perfetto.protos.LayersSnapshotProto')
+    winscopeJson,
+    'WinscopeTraceData',
+    'layersSnapshot'
   );
-  private layerProtoTransformer = new FakeProtoTransformer(root.lookupType('LayerProto'));
+  private layerProtoTransformer = new FakeProtoTransformer(winscopeJson, 'LayersProto', 'layers');
 
   constructor(traceFile: TraceFile, traceProcessor: WasmEngineProxy) {
     super(traceFile, traceProcessor);
@@ -103,7 +104,7 @@ export class ParserSurfaceFlinger extends AbstractParser<LayerTraceEntry> {
     return 'surfaceflinger_layers_snapshot';
   }
 
-  private async querySnapshotLayers(index: number): Promise<perfetto.protos.ILayerProto[]> {
+  private async querySnapshotLayers(index: number): Promise<FakeProto[]> {
     const layerIdToBuilder = new Map<number, FakeProtoBuilder>();
     const getBuilder = (layerId: number) => {
       if (!layerIdToBuilder.has(layerId)) {
@@ -139,7 +140,7 @@ export class ParserSurfaceFlinger extends AbstractParser<LayerTraceEntry> {
       );
     }
 
-    const layerProtos: perfetto.protos.ILayerProto[] = [];
+    const layerProtos: FakeProto[] = [];
     layerIdToBuilder.forEach((builder) => {
       layerProtos.push(builder.build());
     });

@@ -66,7 +66,6 @@ import com.google.common.util.concurrent.MoreExecutors;
 import dagger.hilt.android.AndroidEntryPoint;
 
 import java.util.Arrays;
-import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
@@ -131,9 +130,10 @@ public final class VdmService extends Hilt_VdmService {
 
     private final Consumer<ConnectionManager.ConnectionStatus> mConnectionCallback =
             (status) -> {
-                if (status.state != ConnectionManager.ConnectionStatus.State.CONNECTED) {
+                if (status.state == ConnectionManager.ConnectionStatus.State.DISCONNECTED) {
                     mDeviceCapabilities = null;
                     closeVirtualDevice();
+                    mConnectionManager.startHostSession();
                 }
             };
 
@@ -273,7 +273,9 @@ public final class VdmService extends Hilt_VdmService {
             mDisplayRepository.addDisplay(remoteDisplay);
             mPendingDisplayType = RemoteDisplay.DISPLAY_TYPE_APP;
             if (mPendingRemoteIntent != null) {
-                remoteDisplay.launchIntent(mPendingRemoteIntent);
+                remoteDisplay.launchIntent(
+                        PendingIntent.getActivity(
+                                this, 0, mPendingRemoteIntent, PendingIntent.FLAG_IMMUTABLE));
             }
         } else if (event.hasStopStreaming() && !event.getStopStreaming().getPause()) {
             mDisplayRepository.removeDisplayByRemoteId(event.getDisplayId());
@@ -407,27 +409,13 @@ public final class VdmService extends Hilt_VdmService {
                 MoreExecutors.directExecutor(),
                 new ActivityListener() {
 
-                    private final HashSet<Integer> mSeenTrampolines = new HashSet<>();
-
                     @Override
                     public void onTopActivityChanged(
                             int displayId, @NonNull ComponentName componentName) {
-                        Log.w(TAG, "onTopActivityChanged " + displayId + ": " + componentName);
                         int remoteDisplayId = mDisplayRepository.getRemoteDisplayId(displayId);
                         if (remoteDisplayId == Display.INVALID_DISPLAY) {
                             return;
                         }
-
-                        // The second time the trampoline activity is shown on the display, simply
-                        // remove the display.
-                        if (new ComponentName(VdmService.this, EmptyTrampolineActivity.class)
-                                .equals(componentName)) {
-                            if (!mSeenTrampolines.add(displayId)) {
-                                onDisplayEmpty(displayId);
-                            }
-                            return;
-                        }
-
                         String title = "";
                         try {
                             ActivityInfo activityInfo =
@@ -448,7 +436,6 @@ public final class VdmService extends Hilt_VdmService {
                     public void onDisplayEmpty(int displayId) {
                         Log.i(TAG, "Display " + displayId + " is empty, removing");
                         mDisplayRepository.removeDisplay(displayId);
-                        mSeenTrampolines.remove(displayId);
                     }
                 });
         mVirtualDevice.addActivityListener(
@@ -507,18 +494,17 @@ public final class VdmService extends Hilt_VdmService {
     }
 
     void startStreaming(Intent intent) {
-        mPendingRemoteIntent = new Intent(this, EmptyTrampolineActivity.class);
-        mPendingRemoteIntent.putExtra(Intent.EXTRA_INTENT, intent);
-        mPendingRemoteIntent.addFlags(
-                Intent.FLAG_ACTIVITY_MULTIPLE_TASK | Intent.FLAG_ACTIVITY_NEW_TASK);
+        mPendingRemoteIntent = intent;
         mRemoteIo.sendMessage(
                 RemoteEvent.newBuilder().setStartStreaming(StartStreaming.newBuilder()).build());
     }
 
     void startIntentOnDisplayIndex(Intent intent, int displayIndex) {
+        PendingIntent pendingIntent =
+                PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE);
         mDisplayRepository
                 .getDisplayByIndex(displayIndex)
-                .ifPresent(d -> d.launchIntent(intent));
+                .ifPresent(d -> d.launchIntent(pendingIntent));
     }
 
     private void recreateVirtualDevice() {

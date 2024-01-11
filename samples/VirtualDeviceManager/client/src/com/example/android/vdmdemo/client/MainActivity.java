@@ -64,17 +64,18 @@ public class MainActivity extends Hilt_MainActivity {
 
     private final Consumer<ConnectionManager.ConnectionStatus> mConnectionCallback =
             (status) -> {
-                if (status.state == ConnectionManager.ConnectionStatus.State.CONNECTED) {
+                if (status.state == ConnectionManager.ConnectionStatus.State.DISCONNECTED) {
+                    if (mDisplayAdapter != null) {
+                        runOnUiThread(mDisplayAdapter::clearDisplays);
+                    }
+                    mConnectionManager.startClientSession();
+                } else if (status.state == ConnectionManager.ConnectionStatus.State.CONNECTED) {
                     mRemoteIo.sendMessage(RemoteEvent.newBuilder()
                             .setDeviceCapabilities(DeviceCapabilities.newBuilder()
                                     .setDeviceName(Build.MODEL)
                                     .addAllSensorCapabilities(
                                             mSensorController.getSensorCapabilities()))
                             .build());
-                } else {
-                    if (mDisplayAdapter != null) {
-                        runOnUiThread(mDisplayAdapter::clearDisplays);
-                    }
                 }
             };
 
@@ -112,14 +113,13 @@ public class MainActivity extends Hilt_MainActivity {
         navTouchpadFragment.setInputEventListener((event) ->
                 mInputManager.sendInputEventToFocusedDisplay(
                         InputDeviceType.DEVICE_TYPE_NAVIGATION_TOUCHPAD, event));
-
-        mConnectionManager.startClientSession();
     }
 
     @Override
     public void onStart() {
         super.onStart();
         mConnectionManager.addConnectionCallback(mConnectionCallback);
+        mConnectionManager.startClientSession();
         mRemoteIo.addMessageConsumer(mAudioPlayer);
         mRemoteIo.addMessageConsumer(mRemoteEventConsumer);
     }

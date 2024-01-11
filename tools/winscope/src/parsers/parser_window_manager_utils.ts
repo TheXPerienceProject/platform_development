@@ -13,7 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import {com} from 'protos/windowmanager/latest/types';
 import {CustomQueryParserResultTypeMap, CustomQueryType} from 'trace/custom_query';
 
 type WindowsTokenAndTitle =
@@ -22,56 +21,68 @@ type WindowsTokenAndTitle =
 export class ParserWindowManagerUtils {
   private static readonly NA = 'n/a';
 
-  static parseWindowsTokenAndTitle(
-    rootWindowContainer: com.android.server.wm.IRootWindowContainerProto,
-    result: WindowsTokenAndTitle
-  ) {
+  static parseWindowsTokenAndTitle(rootWindowContainerProto: any, result: WindowsTokenAndTitle) {
     const token =
-      rootWindowContainer?.windowContainer?.identifier?.hashCode?.toString(16) ??
+      rootWindowContainerProto?.windowContainer?.identifier?.hashCode?.toString(16) ??
       ParserWindowManagerUtils.NA;
     const title =
-      rootWindowContainer?.windowContainer?.identifier?.title ?? ParserWindowManagerUtils.NA;
+      rootWindowContainerProto?.windowContainer?.identifier?.title ?? ParserWindowManagerUtils.NA;
     result.push({token, title});
     ParserWindowManagerUtils.parseWindowContainerProto(
-      rootWindowContainer?.windowContainer,
+      rootWindowContainerProto?.windowContainer,
       result
     );
   }
 
-  private static parseWindowContainerProto(
-    proto: com.android.server.wm.IWindowContainerProto | null | undefined,
-    result: WindowsTokenAndTitle
-  ) {
-    if (!proto) {
-      return;
-    }
-
+  private static parseWindowContainerProto(proto: any, result: WindowsTokenAndTitle) {
     for (const windowContainerChildProto of proto?.children ?? []) {
-      ParserWindowManagerUtils.parseActivityRecordProto(windowContainerChildProto.activity, result);
-      ParserWindowManagerUtils.parseDisplayAreaProto(windowContainerChildProto.displayArea, result);
-      ParserWindowManagerUtils.parseDisplayContentProto(
-        windowContainerChildProto.displayContent,
-        result
-      );
-      ParserWindowManagerUtils.parseTaskProto(windowContainerChildProto.task, result);
-      ParserWindowManagerUtils.parseTaskFragmentProto(
-        windowContainerChildProto.taskFragment,
-        result
-      );
-      ParserWindowManagerUtils.parseWindowStateProto(windowContainerChildProto.window, result);
-      ParserWindowManagerUtils.parseWindowContainerProto(
-        windowContainerChildProto.windowContainer,
-        result
-      );
-      ParserWindowManagerUtils.parseWindowTokenProto(windowContainerChildProto.windowToken, result);
+      if (windowContainerChildProto.activity) {
+        ParserWindowManagerUtils.parseActivityRecordProto(
+          windowContainerChildProto.activity,
+          result
+        );
+      }
+      if (windowContainerChildProto.displayArea) {
+        ParserWindowManagerUtils.parseDisplayAreaProto(
+          windowContainerChildProto.displayArea,
+          result
+        );
+      }
+      if (windowContainerChildProto.displayContent) {
+        ParserWindowManagerUtils.parseDisplayContentProto(
+          windowContainerChildProto.displayContent,
+          result
+        );
+      }
+      if (windowContainerChildProto.task) {
+        ParserWindowManagerUtils.parseTaskProto(windowContainerChildProto.task, result);
+      }
+      if (windowContainerChildProto.taskFragment) {
+        ParserWindowManagerUtils.parseTaskFragmentProto(
+          windowContainerChildProto.taskFragment,
+          result
+        );
+      }
+      if (windowContainerChildProto.window) {
+        ParserWindowManagerUtils.parseWindowStateProto(windowContainerChildProto.window, result);
+      }
+      if (windowContainerChildProto.windowContainer) {
+        ParserWindowManagerUtils.parseWindowContainerProto(
+          windowContainerChildProto.windowContainer,
+          result
+        );
+      }
+      if (windowContainerChildProto.windowToken) {
+        ParserWindowManagerUtils.parseWindowTokenProto(
+          windowContainerChildProto.windowToken,
+          result
+        );
+      }
     }
   }
 
-  private static parseActivityRecordProto(
-    proto: com.android.server.wm.IActivityRecordProto | null | undefined,
-    result: WindowsTokenAndTitle
-  ) {
-    if (!proto) {
+  private static parseActivityRecordProto(proto: any, result: WindowsTokenAndTitle) {
+    if (proto === undefined) {
       return;
     }
     const token = proto.windowToken?.hashCode?.toString(16) ?? ParserWindowManagerUtils.NA;
@@ -80,11 +91,8 @@ export class ParserWindowManagerUtils {
     ParserWindowManagerUtils.parseWindowContainerProto(proto.windowToken?.windowContainer, result);
   }
 
-  private static parseDisplayAreaProto(
-    proto: com.android.server.wm.IDisplayAreaProto | null | undefined,
-    result: WindowsTokenAndTitle
-  ) {
-    if (!proto) {
+  private static parseDisplayAreaProto(proto: any, result: WindowsTokenAndTitle) {
+    if (proto === undefined) {
       return;
     }
     const token =
@@ -94,11 +102,8 @@ export class ParserWindowManagerUtils {
     ParserWindowManagerUtils.parseWindowContainerProto(proto.windowContainer, result);
   }
 
-  private static parseDisplayContentProto(
-    proto: com.android.server.wm.IDisplayContentProto | null | undefined,
-    result: WindowsTokenAndTitle
-  ) {
-    if (!proto) {
+  private static parseDisplayContentProto(proto: any, result: WindowsTokenAndTitle) {
+    if (proto === undefined) {
       return;
     }
     const token =
@@ -112,11 +117,8 @@ export class ParserWindowManagerUtils {
     );
   }
 
-  private static parseTaskProto(
-    proto: com.android.server.wm.ITaskProto | null | undefined,
-    result: WindowsTokenAndTitle
-  ) {
-    if (!proto) {
+  private static parseTaskProto(proto: any, result: WindowsTokenAndTitle) {
+    if (proto === undefined) {
       return;
     }
     const token =
@@ -131,21 +133,15 @@ export class ParserWindowManagerUtils {
     ParserWindowManagerUtils.parseTaskFragmentProto(proto.taskFragment, result);
   }
 
-  private static parseTaskFragmentProto(
-    proto: com.android.server.wm.ITaskFragmentProto | null | undefined,
-    result: WindowsTokenAndTitle
-  ) {
-    if (!proto) {
+  private static parseTaskFragmentProto(proto: any, result: WindowsTokenAndTitle) {
+    if (proto === undefined) {
       return;
     }
     ParserWindowManagerUtils.parseWindowContainerProto(proto?.windowContainer, result);
   }
 
-  private static parseWindowStateProto(
-    proto: com.android.server.wm.IWindowStateProto | null | undefined,
-    result: WindowsTokenAndTitle
-  ) {
-    if (!proto) {
+  private static parseWindowStateProto(proto: any, result: WindowsTokenAndTitle) {
+    if (proto === undefined) {
       return;
     }
     const token =
@@ -155,11 +151,8 @@ export class ParserWindowManagerUtils {
     ParserWindowManagerUtils.parseWindowContainerProto(proto.windowContainer, result);
   }
 
-  private static parseWindowTokenProto(
-    proto: com.android.server.wm.IWindowTokenProto | null | undefined,
-    result: WindowsTokenAndTitle
-  ) {
-    if (!proto) {
+  private static parseWindowTokenProto(proto: any, result: WindowsTokenAndTitle) {
+    if (proto === undefined) {
       return;
     }
     const hash = proto.hashCode?.toString(16) ?? ParserWindowManagerUtils.NA;

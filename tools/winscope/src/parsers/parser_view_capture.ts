@@ -14,20 +14,15 @@
  * limitations under the License.
  */
 
-import {assertDefined} from 'common/assert_utils';
-import root from 'protos/viewcapture/latest/root';
-import {com} from 'protos/viewcapture/latest/types';
 import {Parser} from 'trace/parser';
 import {TraceFile} from 'trace/trace_file';
-import {TraceType} from 'trace/trace_type';
+import {FrameData, TraceType, WindowData} from 'trace/trace_type';
 import {ParserViewCaptureWindow} from './parser_view_capture_window';
 import {ParsingUtils} from './parsing_utils';
+import {ExportedData} from './proto_types';
 
 export class ParserViewCapture {
-  private static readonly ExportedData = root.lookupType(
-    'com.android.app.viewcapture.data.ExportedData'
-  );
-  private readonly windowParsers: Array<Parser<com.android.app.viewcapture.data.IFrameData>> = [];
+  private readonly windowParsers: Array<Parser<FrameData>> = [];
 
   constructor(private readonly traceFile: TraceFile) {}
 
@@ -35,23 +30,17 @@ export class ParserViewCapture {
     const traceBuffer = new Uint8Array(await this.traceFile.file.arrayBuffer());
     ParsingUtils.throwIfMagicNumberDoesntMatch(traceBuffer, ParserViewCapture.MAGIC_NUMBER);
 
-    const exportedData = ParserViewCapture.ExportedData.decode(
-      traceBuffer
-    ) as com.android.app.viewcapture.data.IExportedData;
+    const exportedData = ExportedData.decode(traceBuffer) as any;
 
-    const realToElapsedTimeOffsetNs = BigInt(
-      assertDefined(exportedData.realToElapsedTimeOffsetNanos).toString()
-    );
-
-    exportedData.windowData?.forEach((windowData: com.android.app.viewcapture.data.IWindowData) =>
+    exportedData.windowData.forEach((windowData: WindowData) =>
       this.windowParsers.push(
         new ParserViewCaptureWindow(
           [this.traceFile.getDescriptor()],
-          windowData.frameData ?? [],
+          windowData.frameData,
           ParserViewCapture.toTraceType(windowData),
-          realToElapsedTimeOffsetNs,
-          assertDefined(exportedData.package),
-          assertDefined(exportedData.classname)
+          BigInt(exportedData.realToElapsedTimeOffsetNanos),
+          exportedData.package,
+          exportedData.classname
         )
       )
     );
@@ -61,11 +50,11 @@ export class ParserViewCapture {
     return TraceType.VIEW_CAPTURE;
   }
 
-  getWindowParsers(): Array<Parser<com.android.app.viewcapture.data.IFrameData>> {
+  getWindowParsers(): Array<Parser<FrameData>> {
     return this.windowParsers;
   }
 
-  private static toTraceType(windowData: com.android.app.viewcapture.data.IWindowData): TraceType {
+  private static toTraceType(windowData: WindowData): TraceType {
     switch (windowData.title) {
       case '.Taskbar':
         return TraceType.VIEW_CAPTURE_TASKBAR_DRAG_LAYER;
