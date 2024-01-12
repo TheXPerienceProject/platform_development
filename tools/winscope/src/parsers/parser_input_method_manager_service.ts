@@ -16,19 +16,13 @@
 
 import {Timestamp, TimestampType} from 'common/time';
 import {TimeUtils} from 'common/time_utils';
-import root from 'protos/ime/latest/root';
-import {android} from 'protos/ime/latest/types';
 import {TraceFile} from 'trace/trace_file';
 import {TraceTreeNode} from 'trace/trace_tree_node';
 import {TraceType} from 'trace/trace_type';
-import {assertDefined} from '../common/assert_utils';
 import {AbstractParser} from './abstract_parser';
+import {InputMethodManagerServiceTraceFileProto} from './proto_types';
 
 class ParserInputMethodManagerService extends AbstractParser {
-  private static readonly InputMethodManagerServiceTraceFileProto = root.lookupType(
-    'android.view.inputmethod.InputMethodManagerServiceTraceFileProto'
-  );
-
   constructor(trace: TraceFile) {
     super(trace);
     this.realToElapsedTimeOffsetNs = undefined;
@@ -42,26 +36,24 @@ class ParserInputMethodManagerService extends AbstractParser {
     return ParserInputMethodManagerService.MAGIC_NUMBER;
   }
 
-  override decodeTrace(
-    buffer: Uint8Array
-  ): android.view.inputmethod.IInputMethodManagerServiceTraceProto[] {
-    const decoded = ParserInputMethodManagerService.InputMethodManagerServiceTraceFileProto.decode(
-      buffer
-    ) as android.view.inputmethod.IInputMethodManagerServiceTraceFileProto;
-    const timeOffset = BigInt(decoded.realToElapsedTimeOffsetNanos?.toString() ?? '0');
-    this.realToElapsedTimeOffsetNs = timeOffset !== 0n ? timeOffset : undefined;
-    return decoded.entry ?? [];
+  override decodeTrace(buffer: Uint8Array): any[] {
+    const decoded = InputMethodManagerServiceTraceFileProto.decode(buffer) as any;
+    if (Object.prototype.hasOwnProperty.call(decoded, 'realToElapsedTimeOffsetNanos')) {
+      this.realToElapsedTimeOffsetNs = BigInt(decoded.realToElapsedTimeOffsetNanos);
+    } else {
+      this.realToElapsedTimeOffsetNs = undefined;
+    }
+    return decoded.entry;
   }
 
-  protected override getTimestamp(
-    type: TimestampType,
-    entry: android.view.inputmethod.IInputMethodManagerServiceTraceProto
-  ): undefined | Timestamp {
-    const elapsedRealtimeNanos = BigInt(assertDefined(entry.elapsedRealtimeNanos).toString());
+  protected override getTimestamp(type: TimestampType, entryProto: any): undefined | Timestamp {
     if (type === TimestampType.ELAPSED) {
-      return new Timestamp(TimestampType.ELAPSED, elapsedRealtimeNanos);
+      return new Timestamp(TimestampType.ELAPSED, BigInt(entryProto.elapsedRealtimeNanos));
     } else if (type === TimestampType.REAL && this.realToElapsedTimeOffsetNs !== undefined) {
-      return new Timestamp(type, this.realToElapsedTimeOffsetNs + elapsedRealtimeNanos);
+      return new Timestamp(
+        type,
+        this.realToElapsedTimeOffsetNs + BigInt(entryProto.elapsedRealtimeNanos)
+      );
     }
     return undefined;
   }
@@ -69,31 +61,32 @@ class ParserInputMethodManagerService extends AbstractParser {
   protected override processDecodedEntry(
     index: number,
     timestampType: TimestampType,
-    entry: android.view.inputmethod.IInputMethodManagerServiceTraceProto
+    entryProto: TraceTreeNode
   ): TraceTreeNode {
-    if (entry.elapsedRealtimeNanos === undefined || entry.elapsedRealtimeNanos === null) {
+    if (entryProto.elapsedRealtimeNanos === undefined) {
       throw Error('Missing elapsedRealtimeNanos on entry');
     }
 
-    const elapsedRealtimeNanos = BigInt(entry.elapsedRealtimeNanos.toString());
-
     let clockTimeNanos: bigint | undefined = undefined;
-    if (this.realToElapsedTimeOffsetNs !== undefined && entry.elapsedRealtimeNanos !== undefined) {
-      clockTimeNanos = elapsedRealtimeNanos + this.realToElapsedTimeOffsetNs;
+    if (
+      this.realToElapsedTimeOffsetNs !== undefined &&
+      entryProto.elapsedRealtimeNanos !== undefined
+    ) {
+      clockTimeNanos = BigInt(entryProto.elapsedRealtimeNanos) + this.realToElapsedTimeOffsetNs;
     }
 
     const timestamp = Timestamp.from(
       timestampType,
-      elapsedRealtimeNanos,
+      BigInt(entryProto.elapsedRealtimeNanos),
       this.realToElapsedTimeOffsetNs
     );
 
     return {
-      name: TimeUtils.format(timestamp) + ' - ' + entry.where,
+      name: TimeUtils.format(timestamp) + ' - ' + entryProto.where,
       kind: 'InputMethodManagerService entry',
       children: [
         {
-          obj: entry.inputMethodManagerService,
+          obj: entryProto.inputMethodManagerService,
           kind: 'InputMethodManagerService',
           name: '',
           children: [],
@@ -101,10 +94,10 @@ class ParserInputMethodManagerService extends AbstractParser {
           id: 'managerservice',
         },
       ],
-      obj: entry,
+      obj: entryProto,
       stableId: 'entry',
       id: 'entry',
-      elapsedRealtimeNanos,
+      elapsedRealtimeNanos: entryProto.elapsedRealtimeNanos,
       clockTimeNanos,
     };
   }

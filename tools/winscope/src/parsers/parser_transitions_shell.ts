@@ -14,19 +14,14 @@
  * limitations under the License.
  */
 
-import {assertDefined} from 'common/assert_utils';
 import {ElapsedTimestamp, RealTimestamp, Timestamp, TimestampType} from 'common/time';
 import {CrossPlatform, ShellTransitionData, Transition, WmTransitionData} from 'flickerlib/common';
-import root from 'protos/transitions/udc/root';
-import {com} from 'protos/transitions/udc/types';
 import {TraceFile} from 'trace/trace_file';
 import {TraceType} from 'trace/trace_type';
 import {AbstractParser} from './abstract_parser';
+import {ShellTransitionsTraceFileProto} from './proto_types';
 
 export class ParserTransitionsShell extends AbstractParser {
-  private static readonly WmShellTransitionsTraceProto = (root as any).lookupType(
-    'com.android.wm.shell.WmShellTransitionTraceProto'
-  );
   private realToElapsedTimeOffsetNs: undefined | bigint;
   private handlerMapping: undefined | Map<number, string>;
 
@@ -38,31 +33,29 @@ export class ParserTransitionsShell extends AbstractParser {
     return TraceType.SHELL_TRANSITION;
   }
 
-  override decodeTrace(traceBuffer: Uint8Array): com.android.wm.shell.ITransition[] {
-    const decodedProto = ParserTransitionsShell.WmShellTransitionsTraceProto.decode(
-      traceBuffer
-    ) as com.android.wm.shell.IWmShellTransitionTraceProto;
+  override decodeTrace(traceBuffer: Uint8Array): Transition[] {
+    const decodedProto = ShellTransitionsTraceFileProto.decode(traceBuffer) as any;
 
-    const timeOffset = BigInt(decodedProto.realToElapsedTimeOffsetNanos?.toString() ?? '0');
-    this.realToElapsedTimeOffsetNs = timeOffset !== 0n ? timeOffset : undefined;
+    if (Object.prototype.hasOwnProperty.call(decodedProto, 'realToElapsedTimeOffsetNanos')) {
+      this.realToElapsedTimeOffsetNs = BigInt(decodedProto.realToElapsedTimeOffsetNanos);
+    } else {
+      console.warn('Missing realToElapsedTimeOffsetNanos property on SF trace proto');
+      this.realToElapsedTimeOffsetNs = undefined;
+    }
 
     this.handlerMapping = new Map<number, string>();
-    for (const mapping of decodedProto.handlerMappings ?? []) {
+    for (const mapping of decodedProto.handlerMappings) {
       this.handlerMapping.set(mapping.id, mapping.name);
     }
 
-    return decodedProto.transitions ?? [];
+    return decodedProto.transitions;
   }
 
-  override processDecodedEntry(
-    index: number,
-    timestampType: TimestampType,
-    entryProto: com.android.wm.shell.ITransition
-  ): Transition {
+  override processDecodedEntry(index: number, timestampType: TimestampType, entryProto: any): any {
     return this.parseShellTransitionEntry(entryProto);
   }
 
-  private parseShellTransitionEntry(entry: com.android.wm.shell.ITransition): Transition {
+  private parseShellTransitionEntry(entry: any): Transition {
     this.validateShellTransitionEntry(entry);
 
     if (this.realToElapsedTimeOffsetNs === undefined) {
@@ -109,7 +102,10 @@ export class ParserTransitionsShell extends AbstractParser {
       );
     }
 
-    const mergeTarget = entry.mergeTarget ? entry.mergeTarget : null;
+    let mergedInto = null;
+    if (entry.mergedInto !== 0) {
+      mergedInto = entry.mergedInto;
+    }
 
     if (this.handlerMapping === undefined) {
       throw new Error('Missing handler mapping!');
@@ -123,13 +119,13 @@ export class ParserTransitionsShell extends AbstractParser {
         mergeRequestTime,
         mergeTime,
         abortTime,
-        this.handlerMapping.get(assertDefined(entry.handler)),
-        mergeTarget
+        this.handlerMapping.get(entry.handler),
+        mergedInto
       )
     );
   }
 
-  private validateShellTransitionEntry(entry: com.android.wm.shell.ITransition) {
+  private validateShellTransitionEntry(entry: any) {
     if (entry.id === 0) {
       throw new Error('Entry need a non null id');
     }

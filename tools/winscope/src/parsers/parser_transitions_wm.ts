@@ -7,17 +7,13 @@ import {
   TransitionType,
   WmTransitionData,
 } from 'flickerlib/common';
-import root from 'protos/transitions/udc/root';
-import {com} from 'protos/transitions/udc/types';
 import {TraceFile} from 'trace/trace_file';
 import {TraceType} from 'trace/trace_type';
 import {AbstractParser} from './abstract_parser';
+import {WmTransitionsTraceFileProto} from './proto_types';
 
 export class ParserTransitionsWm extends AbstractParser {
   private realToElapsedTimeOffsetNs: undefined | bigint;
-  private static readonly TransitionTraceProto = root.lookupType(
-    'com.android.server.wm.shell.TransitionTraceProto'
-  );
 
   constructor(trace: TraceFile) {
     super(trace);
@@ -27,23 +23,19 @@ export class ParserTransitionsWm extends AbstractParser {
     return TraceType.WM_TRANSITION;
   }
 
-  override processDecodedEntry(
-    index: number,
-    timestampType: TimestampType,
-    entryProto: com.android.server.wm.shell.ITransition
-  ): Transition {
+  override processDecodedEntry(index: number, timestampType: TimestampType, entryProto: any): any {
     return this.parseWmTransitionEntry(entryProto);
   }
 
-  override decodeTrace(buffer: Uint8Array): com.android.server.wm.shell.ITransition[] {
-    const decodedProto = ParserTransitionsWm.TransitionTraceProto.decode(
-      buffer
-    ) as unknown as com.android.server.wm.shell.ITransitionTraceProto;
-
-    const timeOffset = BigInt(decodedProto.realToElapsedTimeOffsetNanos?.toString() ?? '0');
-    this.realToElapsedTimeOffsetNs = timeOffset !== 0n ? timeOffset : undefined;
-
-    return decodedProto.transitions ?? [];
+  override decodeTrace(buffer: Uint8Array): any[] {
+    const decodedProto = WmTransitionsTraceFileProto.decode(buffer) as any;
+    if (Object.prototype.hasOwnProperty.call(decodedProto, 'realToElapsedTimeOffsetNanos')) {
+      this.realToElapsedTimeOffsetNs = BigInt(decodedProto.realToElapsedTimeOffsetNanos);
+    } else {
+      console.warn('Missing realToElapsedTimeOffsetNanos property on SF trace proto');
+      this.realToElapsedTimeOffsetNs = undefined;
+    }
+    return decodedProto.transitions;
   }
 
   override getMagicNumber(): number[] | undefined {
@@ -64,19 +56,15 @@ export class ParserTransitionsWm extends AbstractParser {
     throw new Error('Timestamp type unsupported');
   }
 
-  private parseWmTransitionEntry(entry: com.android.server.wm.shell.ITransition): Transition {
+  private parseWmTransitionEntry(entry: any): Transition {
     this.validateWmTransitionEntry(entry);
     let changes: TransitionChange[] | null;
-    if (!entry.targets || entry.targets.length === 0) {
+    if (entry.targets.length === 0) {
       changes = null;
     } else {
       changes = entry.targets.map(
-        (target) =>
-          new TransitionChange(
-            TransitionType.Companion.fromInt(target.mode),
-            target.layerId,
-            target.windowId
-          )
+        (it: any) =>
+          new TransitionChange(TransitionType.Companion.fromInt(it.mode), it.layerId, it.windowId)
       );
     }
 
@@ -170,7 +158,7 @@ export class ParserTransitionsWm extends AbstractParser {
     );
   }
 
-  private validateWmTransitionEntry(entry: com.android.server.wm.shell.ITransition) {
+  private validateWmTransitionEntry(entry: any) {
     if (entry.id === 0) {
       throw new Error('Entry need a non null id');
     }

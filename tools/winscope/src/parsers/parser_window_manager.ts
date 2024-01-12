@@ -13,11 +13,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import {assertDefined} from 'common/assert_utils';
 import {Timestamp, TimestampType} from 'common/time';
 import {WindowManagerState} from 'flickerlib/windows/WindowManagerState';
-import root from 'protos/windowmanager/latest/root';
-import {com} from 'protos/windowmanager/latest/types';
 import {
   CustomQueryParserResultTypeMap,
   CustomQueryType,
@@ -28,12 +25,9 @@ import {TraceFile} from 'trace/trace_file';
 import {TraceType} from 'trace/trace_type';
 import {AbstractParser} from './abstract_parser';
 import {ParserWindowManagerUtils} from './parser_window_manager_utils';
+import {WindowManagerTraceFileProto} from './proto_types';
 
 export class ParserWindowManager extends AbstractParser {
-  private static readonly WindowManagerTraceFileProto = root.lookupType(
-    'com.android.server.wm.WindowManagerTraceFileProto'
-  );
-
   constructor(trace: TraceFile) {
     super(trace);
     this.realToElapsedTimeOffsetNs = undefined;
@@ -47,26 +41,23 @@ export class ParserWindowManager extends AbstractParser {
     return ParserWindowManager.MAGIC_NUMBER;
   }
 
-  override decodeTrace(buffer: Uint8Array): com.android.server.wm.IWindowManagerTraceProto[] {
-    const decoded = ParserWindowManager.WindowManagerTraceFileProto.decode(
-      buffer
-    ) as com.android.server.wm.IWindowManagerTraceFileProto;
-    const timeOffset = BigInt(decoded.realToElapsedTimeOffsetNanos?.toString() ?? '0');
-    this.realToElapsedTimeOffsetNs = timeOffset !== 0n ? timeOffset : undefined;
-    return decoded.entry ?? [];
+  override decodeTrace(buffer: Uint8Array): any[] {
+    const decoded = WindowManagerTraceFileProto.decode(buffer) as any;
+    if (Object.prototype.hasOwnProperty.call(decoded, 'realToElapsedTimeOffsetNanos')) {
+      this.realToElapsedTimeOffsetNs = BigInt(decoded.realToElapsedTimeOffsetNanos);
+    } else {
+      this.realToElapsedTimeOffsetNs = undefined;
+    }
+    return decoded.entry;
   }
 
-  override getTimestamp(
-    type: TimestampType,
-    entry: com.android.server.wm.IWindowManagerTraceProto
-  ): undefined | Timestamp {
+  override getTimestamp(type: TimestampType, entryProto: any): undefined | Timestamp {
     if (type === TimestampType.ELAPSED) {
-      return new Timestamp(type, BigInt(assertDefined(entry.elapsedRealtimeNanos).toString()));
+      return new Timestamp(type, BigInt(entryProto.elapsedRealtimeNanos));
     } else if (type === TimestampType.REAL && this.realToElapsedTimeOffsetNs !== undefined) {
       return new Timestamp(
         type,
-        this.realToElapsedTimeOffsetNs +
-          BigInt(assertDefined(entry.elapsedRealtimeNanos).toString())
+        this.realToElapsedTimeOffsetNs + BigInt(entryProto.elapsedRealtimeNanos)
       );
     }
     return undefined;
@@ -75,12 +66,12 @@ export class ParserWindowManager extends AbstractParser {
   override processDecodedEntry(
     index: number,
     timestampType: TimestampType,
-    entry: com.android.server.wm.IWindowManagerTraceProto
+    entryProto: any
   ): WindowManagerState {
     return WindowManagerState.fromProto(
-      entry.windowManagerService,
-      BigInt(assertDefined(entry.elapsedRealtimeNanos).toString()),
-      entry.where,
+      entryProto.windowManagerService,
+      BigInt(entryProto.elapsedRealtimeNanos.toString()),
+      entryProto.where,
       this.realToElapsedTimeOffsetNs,
       timestampType === TimestampType.ELAPSED /*useElapsedTime*/
     );

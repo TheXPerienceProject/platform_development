@@ -14,11 +14,8 @@
  * limitations under the License.
  */
 
-import {assertDefined} from 'common/assert_utils';
 import {Timestamp, TimestampType} from 'common/time';
 import {LayerTraceEntry} from 'flickerlib/layers/LayerTraceEntry';
-import root from 'protos/surfaceflinger/udc/root';
-import {android} from 'protos/surfaceflinger/udc/types';
 import {
   CustomQueryParserResultTypeMap,
   CustomQueryType,
@@ -28,12 +25,9 @@ import {EntriesRange} from 'trace/trace';
 import {TraceFile} from 'trace/trace_file';
 import {TraceType} from 'trace/trace_type';
 import {AbstractParser} from './abstract_parser';
+import {LayersTraceFileProto} from './proto_types';
 
 class ParserSurfaceFlinger extends AbstractParser {
-  private static readonly LayersTraceFileProto = root.lookupType(
-    'android.surfaceflinger.LayersTraceFileProto'
-  );
-
   constructor(trace: TraceFile) {
     super(trace);
     this.realToElapsedTimeOffsetNs = undefined;
@@ -47,31 +41,29 @@ class ParserSurfaceFlinger extends AbstractParser {
     return ParserSurfaceFlinger.MAGIC_NUMBER;
   }
 
-  override decodeTrace(buffer: Uint8Array): android.surfaceflinger.ILayersTraceProto[] {
-    const decoded = ParserSurfaceFlinger.LayersTraceFileProto.decode(
-      buffer
-    ) as android.surfaceflinger.ILayersTraceFileProto;
-    const timeOffset = BigInt(decoded.realToElapsedTimeOffsetNanos?.toString() ?? '0');
-    this.realToElapsedTimeOffsetNs = timeOffset !== 0n ? timeOffset : undefined;
-    return decoded.entry ?? [];
+  override decodeTrace(buffer: Uint8Array): any[] {
+    const decoded = LayersTraceFileProto.decode(buffer) as any;
+    if (Object.prototype.hasOwnProperty.call(decoded, 'realToElapsedTimeOffsetNanos')) {
+      this.realToElapsedTimeOffsetNs = BigInt(decoded.realToElapsedTimeOffsetNanos);
+    } else {
+      console.warn('Missing realToElapsedTimeOffsetNanos property on SF trace proto');
+      this.realToElapsedTimeOffsetNs = undefined;
+    }
+    return decoded.entry;
   }
 
-  override getTimestamp(
-    type: TimestampType,
-    entry: android.surfaceflinger.ILayersTraceProto
-  ): undefined | Timestamp {
-    const isDump = !Object.prototype.hasOwnProperty.call(entry, 'elapsedRealtimeNanos');
+  override getTimestamp(type: TimestampType, entryProto: any): undefined | Timestamp {
+    const isDump = !Object.prototype.hasOwnProperty.call(entryProto, 'elapsedRealtimeNanos');
     if (type === TimestampType.ELAPSED) {
       return isDump
         ? new Timestamp(type, 0n)
-        : new Timestamp(type, BigInt(assertDefined(entry.elapsedRealtimeNanos).toString()));
+        : new Timestamp(type, BigInt(entryProto.elapsedRealtimeNanos));
     } else if (type === TimestampType.REAL && this.realToElapsedTimeOffsetNs !== undefined) {
       return isDump
         ? new Timestamp(type, 0n)
         : new Timestamp(
             type,
-            this.realToElapsedTimeOffsetNs +
-              BigInt(assertDefined(entry.elapsedRealtimeNanos).toString())
+            this.realToElapsedTimeOffsetNs + BigInt(entryProto.elapsedRealtimeNanos)
           );
     }
     return undefined;
@@ -80,18 +72,18 @@ class ParserSurfaceFlinger extends AbstractParser {
   override processDecodedEntry(
     index: number,
     timestampType: TimestampType,
-    entry: android.surfaceflinger.ILayersTraceProto
+    entryProto: any
   ): LayerTraceEntry {
     return LayerTraceEntry.fromProto(
-      entry?.layers?.layers,
-      entry.displays,
-      BigInt(assertDefined(entry.elapsedRealtimeNanos).toString()),
-      entry.vsyncId,
-      entry.hwcBlob,
-      entry.where,
+      entryProto.layers.layers,
+      entryProto.displays,
+      BigInt(entryProto.elapsedRealtimeNanos.toString()),
+      entryProto.vsyncId,
+      entryProto.hwcBlob,
+      entryProto.where,
       this.realToElapsedTimeOffsetNs,
       timestampType === TimestampType.ELAPSED /*useElapsedTime*/,
-      entry.excludesCompositionState ?? false
+      entryProto.excludesCompositionState ?? false
     );
   }
 

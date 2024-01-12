@@ -51,6 +51,7 @@ export enum TraceType {
 // view capture types
 export type ViewNode = any;
 export type FrameData = any;
+export type WindowData = any;
 
 export interface TreeAndRects {
   tree: HierarchyTreeNode;

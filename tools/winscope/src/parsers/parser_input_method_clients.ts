@@ -14,22 +14,16 @@
  * limitations under the License.
  */
 
-import {assertDefined} from 'common/assert_utils';
 import {Timestamp, TimestampType} from 'common/time';
 import {TimeUtils} from 'common/time_utils';
-import root from 'protos/ime/latest/root';
-import {android} from 'protos/ime/latest/types';
 import {TraceFile} from 'trace/trace_file';
 import {TraceTreeNode} from 'trace/trace_tree_node';
 import {TraceType} from 'trace/trace_type';
 import {ImeUtils} from 'viewers/common/ime_utils';
 import {AbstractParser} from './abstract_parser';
+import {InputMethodClientsTraceFileProto} from './proto_types';
 
 class ParserInputMethodClients extends AbstractParser {
-  private static readonly InputMethodClientsTraceFileProto = root.lookupType(
-    'android.view.inputmethod.InputMethodClientsTraceFileProto'
-  );
-
   constructor(trace: TraceFile) {
     super(trace);
     this.realToElapsedTimeOffsetNs = undefined;
@@ -43,26 +37,25 @@ class ParserInputMethodClients extends AbstractParser {
     return ParserInputMethodClients.MAGIC_NUMBER;
   }
 
-  override decodeTrace(
-    buffer: Uint8Array
-  ): android.view.inputmethod.IInputMethodClientsTraceProto[] {
-    const decoded = ParserInputMethodClients.InputMethodClientsTraceFileProto.decode(
-      buffer
-    ) as android.view.inputmethod.IInputMethodClientsTraceFileProto;
-    const timeOffset = BigInt(decoded.realToElapsedTimeOffsetNanos?.toString() ?? '0');
-    this.realToElapsedTimeOffsetNs = timeOffset !== 0n ? timeOffset : undefined;
-    return decoded.entry ?? [];
+  override decodeTrace(buffer: Uint8Array): any[] {
+    const decoded = InputMethodClientsTraceFileProto.decode(buffer) as any;
+    if (Object.prototype.hasOwnProperty.call(decoded, 'realToElapsedTimeOffsetNanos')) {
+      this.realToElapsedTimeOffsetNs = BigInt(decoded.realToElapsedTimeOffsetNanos);
+    } else {
+      this.realToElapsedTimeOffsetNs = undefined;
+    }
+
+    return (InputMethodClientsTraceFileProto.decode(buffer) as any).entry;
   }
 
-  override getTimestamp(
-    type: TimestampType,
-    entry: android.view.inputmethod.IInputMethodClientsTraceProto
-  ): undefined | Timestamp {
-    const elapsedRealtimeNanos = BigInt(assertDefined(entry.elapsedRealtimeNanos).toString());
+  override getTimestamp(type: TimestampType, entryProto: any): undefined | Timestamp {
     if (type === TimestampType.ELAPSED) {
-      return new Timestamp(type, elapsedRealtimeNanos);
+      return new Timestamp(type, BigInt(entryProto.elapsedRealtimeNanos));
     } else if (type === TimestampType.REAL && this.realToElapsedTimeOffsetNs !== undefined) {
-      return new Timestamp(type, elapsedRealtimeNanos + this.realToElapsedTimeOffsetNs);
+      return new Timestamp(
+        type,
+        BigInt(entryProto.elapsedRealtimeNanos) + this.realToElapsedTimeOffsetNs
+      );
     }
     return undefined;
   }
@@ -70,42 +63,43 @@ class ParserInputMethodClients extends AbstractParser {
   override processDecodedEntry(
     index: number,
     timestampType: TimestampType,
-    entry: android.view.inputmethod.IInputMethodClientsTraceProto
+    entryProto: TraceTreeNode
   ): TraceTreeNode {
-    if (entry.elapsedRealtimeNanos === undefined || entry.elapsedRealtimeNanos === null) {
+    if (entryProto.elapsedRealtimeNanos === undefined) {
       throw Error('Missing elapsedRealtimeNanos on entry');
     }
 
-    const elapsedRealtimeNanos = BigInt(entry.elapsedRealtimeNanos.toString());
-
     let clockTimeNanos: bigint | undefined = undefined;
-    if (this.realToElapsedTimeOffsetNs !== undefined) {
-      clockTimeNanos = elapsedRealtimeNanos + this.realToElapsedTimeOffsetNs;
+    if (
+      this.realToElapsedTimeOffsetNs !== undefined &&
+      entryProto.elapsedRealtimeNanos !== undefined
+    ) {
+      clockTimeNanos = BigInt(entryProto.elapsedRealtimeNanos) + this.realToElapsedTimeOffsetNs;
     }
 
     const timestamp = Timestamp.from(
       timestampType,
-      elapsedRealtimeNanos,
+      BigInt(entryProto.elapsedRealtimeNanos),
       this.realToElapsedTimeOffsetNs
     );
 
     return {
-      name: TimeUtils.format(timestamp) + ' - ' + entry.where,
+      name: TimeUtils.format(timestamp) + ' - ' + entryProto.where,
       kind: 'InputMethodClient entry',
       children: [
         {
-          obj: ImeUtils.transformInputConnectionCall(entry.client),
+          obj: ImeUtils.transformInputConnectionCall(entryProto.client),
           kind: 'Client',
-          name: entry.client?.viewRootImpl?.view ?? '',
+          name: entryProto.client?.viewRootImpl?.view ?? '',
           children: [],
           stableId: 'client',
           id: 'client',
         },
       ],
-      obj: entry,
+      obj: entryProto,
       stableId: 'entry',
       id: 'entry',
-      elapsedRealtimeNanos,
+      elapsedRealtimeNanos: entryProto.elapsedRealtimeNanos,
       clockTimeNanos,
     };
   }

@@ -123,12 +123,10 @@ final class DisplayAdapter extends RecyclerView.Adapter<DisplayHolder> {
     }
 
     void clearDisplays() {
+        Log.i(TAG, "Clearing all displays");
         int size = mDisplayRepository.size();
-        if (size > 0) {
-            Log.i(TAG, "Clearing all displays");
-            mDisplayRepository.clear();
-            notifyItemRangeRemoved(0, size);
-        }
+        mDisplayRepository.clear();
+        notifyItemRangeRemoved(0, size);
     }
 
     void pauseAllDisplays() {
