@@ -14,12 +14,12 @@
  * limitations under the License.
  */
 
-import {AppEvent, AppEventType} from 'app/app_event';
 import {assertDefined} from 'common/assert_utils';
 import {PersistentStoreProxy} from 'common/persistent_store_proxy';
 import {FilterType, TreeUtils} from 'common/tree_utils';
 import {Layer} from 'flickerlib/layers/Layer';
 import {LayerTraceEntry} from 'flickerlib/layers/LayerTraceEntry';
+import {WinscopeEvent, WinscopeEventType} from 'messaging/winscope_event';
 import {Trace} from 'trace/trace';
 import {Traces} from 'trace/traces';
 import {TraceEntryFinder} from 'trace/trace_entry_finder';
@@ -29,13 +29,16 @@ import {TreeGenerator} from 'viewers/common/tree_generator';
 import {TreeTransformer} from 'viewers/common/tree_transformer';
 import {HierarchyTreeNode, PropertiesTreeNode} from 'viewers/common/ui_tree_utils';
 import {UserOptions} from 'viewers/common/user_options';
+import {ViewCaptureUtils} from 'viewers/common/view_capture_utils';
 import {UiData} from './ui_data';
 
 type NotifyViewCallbackType = (uiData: UiData) => void;
 
 export class Presenter {
   private readonly notifyViewCallback: NotifyViewCallbackType;
+  private readonly traces: Traces;
   private readonly trace: Trace<LayerTraceEntry>;
+  private viewCapturePackageNames: string[] = [];
   private uiData: UiData;
   private hierarchyFilter: FilterType = TreeUtils.makeNodeFilter('');
   private propertiesFilter: FilterType = TreeUtils.makeNodeFilter('');
@@ -97,14 +100,17 @@ export class Presenter {
     private readonly storage: Storage,
     notifyViewCallback: NotifyViewCallbackType
   ) {
+    this.traces = traces;
     this.trace = assertDefined(traces.getTrace(TraceType.SURFACE_FLINGER));
     this.notifyViewCallback = notifyViewCallback;
     this.uiData = new UiData([TraceType.SURFACE_FLINGER]);
     this.copyUiDataAndNotifyView();
   }
 
-  async onAppEvent(event: AppEvent) {
-    await event.visit(AppEventType.TRACE_POSITION_UPDATE, async (event) => {
+  async onAppEvent(event: WinscopeEvent) {
+    await event.visit(WinscopeEventType.TRACE_POSITION_UPDATE, async (event) => {
+      await this.initializeIfNeeded();
+
       const entry = TraceEntryFinder.findCorrespondingEntry(this.trace, event.position);
       const prevEntry =
         entry && entry.getIndex() > 0 ? this.trace.getEntry(entry.getIndex() - 1) : undefined;
@@ -125,7 +131,11 @@ export class Presenter {
       if (this.entry) {
         this.uiData.highlightedItem = this.highlightedItem;
         this.uiData.highlightedProperty = this.highlightedProperty;
-        this.uiData.rects = SurfaceFlingerUtils.makeRects(this.entry, this.hierarchyUserOptions);
+        this.uiData.rects = SurfaceFlingerUtils.makeRects(
+          this.entry,
+          this.viewCapturePackageNames,
+          this.hierarchyUserOptions
+        );
         this.uiData.displayIds = this.getDisplayIds(this.entry);
         this.uiData.tree = this.generateTree();
       }
@@ -192,6 +202,10 @@ export class Presenter {
   newPropertiesTree(selectedItem: HierarchyTreeNode) {
     this.selectedHierarchyTree = selectedItem;
     this.updateSelectedTreeUiData();
+  }
+
+  private async initializeIfNeeded() {
+    this.viewCapturePackageNames = await ViewCaptureUtils.getPackageNames(this.traces);
   }
 
   private getDisplayIds(entry: LayerTraceEntry): number[] {

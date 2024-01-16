@@ -19,6 +19,7 @@ import {
   Component,
   Inject,
   Injector,
+  NgZone,
   ViewChild,
   ViewEncapsulation,
 } from '@angular/core';
@@ -26,7 +27,6 @@ import {createCustomElement} from '@angular/elements';
 import {FormControl, Validators} from '@angular/forms';
 import {Title} from '@angular/platform-browser';
 import {AbtChromeExtensionProtocol} from 'abt_chrome_extension/abt_chrome_extension_protocol';
-import {AppEvent, AppEventType} from 'app/app_event';
 import {Mediator} from 'app/mediator';
 import {TimelineData} from 'app/timeline_data';
 import {TRACE_INFO} from 'app/trace_info';
@@ -36,8 +36,16 @@ import {PersistentStore} from 'common/persistent_store';
 import {Timestamp} from 'common/time';
 import {CrossToolProtocol} from 'cross_tool/cross_tool_protocol';
 import {CrossPlatform, NoCache} from 'flickerlib/common';
-import {AppEventListener} from 'interfaces/app_event_listener';
-import {TraceDataListener} from 'interfaces/trace_data_listener';
+import {
+  AppFilesCollected,
+  AppFilesUploaded,
+  AppInitialized,
+  AppResetRequest,
+  AppTraceViewRequest,
+  WinscopeEvent,
+  WinscopeEventType,
+} from 'messaging/winscope_event';
+import {WinscopeEventListener} from 'messaging/winscope_event_listener';
 import {Trace} from 'trace/trace';
 import {TraceType} from 'trace/trace_type';
 import {proxyClient, ProxyState} from 'trace_collection/proxy_client';
@@ -62,7 +70,7 @@ import {UploadTracesComponent} from './upload_traces_component';
     <mat-toolbar class="toolbar">
       <div class="horizontal-align vertical-align">
         <span class="app-title">Winscope</span>
-        <div *ngIf="dataLoaded" class="file-descriptor vertical-align">
+        <div *ngIf="showDataLoadedElements" class="file-descriptor vertical-align">
           <span *ngIf="!isEditingFilename" class="download-file-info mat-body-2">
             {{ filenameFormControl.value }}.zip
           </span>
@@ -70,6 +78,7 @@ import {UploadTracesComponent} from './upload_traces_component';
             class="file-name-input-field"
             *ngIf="isEditingFilename"
             floatLabel="always"
+            (keydown.enter)="onCheckIconClick()"
             (focusout)="onCheckIconClick()"
             matTooltip="Allowed: A-Z a-z 0-9 . _ - #">
             <mat-label>Edit file name</mat-label>
@@ -103,7 +112,7 @@ import {UploadTracesComponent} from './upload_traces_component';
         </div>
       </div>
 
-      <div class="horizontal-align vertical-align active" *ngIf="dataLoaded">
+      <div class="horizontal-align vertical-align active" *ngIf="showDataLoadedElements">
         <mat-icon
           *ngIf="activeTrace"
           class="icon"
@@ -118,10 +127,10 @@ import {UploadTracesComponent} from './upload_traces_component';
 
       <div class="horizontal-align vertical-align">
         <button
-          *ngIf="dataLoaded"
+          *ngIf="showDataLoadedElements"
           color="primary"
           mat-stroked-button
-          (click)="mediator.onWinscopeUploadNew()">
+          (click)="onUploadNewButtonClick()">
           Upload New
         </button>
         <button
@@ -173,14 +182,14 @@ import {UploadTracesComponent} from './upload_traces_component';
           <div class="card-grid landing-grid">
             <collect-traces
               class="collect-traces-card homepage-card"
-              (filesCollected)="mediator.onWinscopeFilesCollected($event)"
+              (filesCollected)="onFilesCollected($event)"
               [store]="store"></collect-traces>
 
             <upload-traces
               class="upload-traces-card homepage-card"
               [tracePipeline]="tracePipeline"
-              (filesUploaded)="mediator.onWinscopeFilesUploaded($event)"
-              (viewTracesButtonClick)="mediator.onWinscopeViewTracesRequest()"></upload-traces>
+              (filesUploaded)="onFilesUploaded($event)"
+              (viewTracesButtonClick)="onViewTracesButtonClick()"></upload-traces>
           </div>
         </div>
       </div>
@@ -263,13 +272,14 @@ import {UploadTracesComponent} from './upload_traces_component';
   ],
   encapsulation: ViewEncapsulation.None,
 })
-export class AppComponent implements AppEventListener, TraceDataListener {
+export class AppComponent implements WinscopeEventListener {
   title = 'winscope';
   timelineData = new TimelineData();
   abtChromeExtensionProtocol = new AbtChromeExtensionProtocol();
   crossToolProtocol = new CrossToolProtocol();
   states = ProxyState;
   dataLoaded = false;
+  showDataLoadedElements = false;
   activeTraceFileInfo = '';
   collapsedTimelineHeight = 0;
   TRACE_INFO = TRACE_INFO;
@@ -285,7 +295,10 @@ export class AppComponent implements AppEventListener, TraceDataListener {
   currentTimestamp?: Timestamp;
   activeView?: View;
   activeTrace?: Trace<object>;
-  filenameFormControl?: FormControl;
+  filenameFormControl: FormControl = new FormControl(
+    'winscope',
+    Validators.compose([Validators.required, Validators.pattern(FileUtils.DOWNLOAD_FILENAME_REGEX)])
+  );
 
   @ViewChild(UploadTracesComponent) uploadTracesComponent?: UploadTracesComponent;
   @ViewChild(CollectTracesComponent) collectTracesComponent?: UploadTracesComponent;
@@ -296,13 +309,14 @@ export class AppComponent implements AppEventListener, TraceDataListener {
     @Inject(Injector) injector: Injector,
     @Inject(ChangeDetectorRef) changeDetectorRef: ChangeDetectorRef,
     @Inject(SnackBarOpener) snackBar: SnackBarOpener,
-    @Inject(Title) private pageTitle: Title
+    @Inject(Title) private pageTitle: Title,
+    @Inject(NgZone) private ngZone: NgZone
   ) {
     CrossPlatform.setCache(new NoCache());
 
     this.changeDetectorRef = changeDetectorRef;
     this.snackbarOpener = snackBar;
-    this.tracePipeline = new TracePipeline(this.snackbarOpener);
+    this.tracePipeline = new TracePipeline();
     this.mediator = new Mediator(
       this.tracePipeline,
       this.timelineData,
@@ -367,8 +381,8 @@ export class AppComponent implements AppEventListener, TraceDataListener {
     }
   }
 
-  ngAfterViewInit() {
-    this.mediator.onWinscopeInitialized();
+  async ngAfterViewInit() {
+    await this.mediator.onWinscopeEvent(new AppInitialized());
   }
 
   ngAfterViewChecked() {
@@ -387,28 +401,6 @@ export class AppComponent implements AppEventListener, TraceDataListener {
     return this.tracePipeline.getTraces().mapTrace((trace) => trace.type);
   }
 
-  onTraceDataLoaded(viewers: Viewer[]) {
-    this.viewers = viewers;
-    this.dataLoaded = true;
-    this.isEditingFilename = false;
-    this.filenameFormControl = new FormControl(
-      this.tracePipeline.getDownloadArchiveFilename(),
-      Validators.compose([
-        Validators.required,
-        Validators.pattern(FileUtils.DOWNLOAD_FILENAME_REGEX),
-      ])
-    );
-    this.pageTitle.setTitle(`Winscope | ${this.filenameFormControl.value}`);
-    this.changeDetectorRef.detectChanges();
-  }
-
-  onTraceDataUnloaded() {
-    proxyClient.adbData = [];
-    this.dataLoaded = false;
-    this.pageTitle.setTitle('Winscope');
-    this.changeDetectorRef.detectChanges();
-  }
-
   setDarkMode(enabled: boolean) {
     document.body.classList.toggle('dark-mode', enabled);
     this.store.add('dark-mode', `${enabled}`);
@@ -420,23 +412,39 @@ export class AppComponent implements AppEventListener, TraceDataListener {
   }
 
   onCheckIconClick() {
-    if (this.filenameFormControl?.invalid) {
+    if (this.filenameFormControl.invalid) {
       return;
     }
     this.isEditingFilename = false;
-    this.pageTitle.setTitle(`Winscope | ${this.filenameFormControl?.value}`);
+    this.pageTitle.setTitle(`Winscope | ${this.filenameFormControl.value}`);
   }
 
   async onDownloadTracesButtonClick() {
-    if (this.filenameFormControl?.invalid) {
+    if (this.filenameFormControl.invalid) {
       return;
     }
     await this.downloadTraces();
   }
 
+  async onFilesCollected(files: File[]) {
+    await this.mediator.onWinscopeEvent(new AppFilesCollected(files));
+  }
+
+  async onFilesUploaded(files: File[]) {
+    await this.mediator.onWinscopeEvent(new AppFilesUploaded(files));
+  }
+
+  async onUploadNewButtonClick() {
+    await this.mediator.onWinscopeEvent(new AppResetRequest());
+  }
+
+  async onViewTracesButtonClick() {
+    await this.mediator.onWinscopeEvent(new AppTraceViewRequest());
+  }
+
   async downloadTraces() {
     const archiveBlob = await this.tracePipeline.makeZipArchiveWithLoadedTraceFiles();
-    const archiveFilename = `${this.filenameFormControl?.value}.zip`;
+    const archiveFilename = `${this.filenameFormControl.value}.zip`;
 
     const a = document.createElement('a');
     document.body.appendChild(a);
@@ -448,11 +456,37 @@ export class AppComponent implements AppEventListener, TraceDataListener {
     document.body.removeChild(a);
   }
 
-  async onAppEvent(event: AppEvent) {
-    await event.visit(AppEventType.TABBED_VIEW_SWITCHED, async (event) => {
+  async onWinscopeEvent(event: WinscopeEvent) {
+    await event.visit(WinscopeEventType.TABBED_VIEW_SWITCHED, async (event) => {
       this.activeView = event.newFocusedView;
       this.activeTrace = this.getActiveTrace(event.newFocusedView);
       this.activeTraceFileInfo = this.makeActiveTraceFileInfo(event.newFocusedView);
+    });
+
+    await event.visit(WinscopeEventType.VIEWERS_LOADED, async (event) => {
+      this.viewers = event.viewers;
+      this.filenameFormControl.setValue(this.tracePipeline.getDownloadArchiveFilename());
+      this.pageTitle.setTitle(`Winscope | ${this.filenameFormControl.value}`);
+      this.isEditingFilename = false;
+
+      // some elements e.g. timeline require dataLoaded to be set outside NgZone to render
+      this.dataLoaded = true;
+      this.changeDetectorRef.detectChanges();
+
+      // tooltips must be rendered inside ngZone due to limitation of MatTooltip,
+      // therefore toolbar elements controlled by a different boolean
+      this.ngZone.run(() => {
+        this.showDataLoadedElements = true;
+      });
+    });
+
+    await event.visit(WinscopeEventType.VIEWERS_UNLOADED, async (event) => {
+      proxyClient.adbData = [];
+      this.dataLoaded = false;
+      this.showDataLoadedElements = false;
+      this.pageTitle.setTitle('Winscope');
+      this.activeView = undefined;
+      this.changeDetectorRef.detectChanges();
     });
   }
 

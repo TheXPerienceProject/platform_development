@@ -14,22 +14,31 @@
  * limitations under the License.
  */
 
+import {TransformMatrix} from 'common/geometry_utils';
 import {Layer, LayerTraceEntry} from 'flickerlib/common';
-import {ParserViewCapture} from 'parsers/parser_view_capture';
-import {Rectangle, TransformMatrix} from 'viewers/components/rects/types2d';
+import {UiRect} from 'viewers/components/rects/types2d';
 import {UserOptions} from './user_options';
 
 export class SurfaceFlingerUtils {
-  static makeRects(entry: LayerTraceEntry, hierarchyUserOptions: UserOptions): Rectangle[] {
-    const layerRects = SurfaceFlingerUtils.makeLayerRects(entry, hierarchyUserOptions);
+  static makeRects(
+    entry: LayerTraceEntry,
+    viewCapturePackageNames: string[],
+    hierarchyUserOptions: UserOptions
+  ): UiRect[] {
+    const layerRects = SurfaceFlingerUtils.makeLayerRects(
+      entry,
+      viewCapturePackageNames,
+      hierarchyUserOptions
+    );
     const displayRects = SurfaceFlingerUtils.makeDisplayRects(entry);
     return layerRects.concat(displayRects);
   }
 
   private static makeLayerRects(
     entry: LayerTraceEntry,
+    viewCapturePackageNames: string[],
     hierarchyUserOptions: UserOptions
-  ): Rectangle[] {
+  ): UiRect[] {
     return entry.flattenedLayers
       .filter((layer: Layer) => {
         return SurfaceFlingerUtils.isLayerToRenderInRectsComponent(layer, hierarchyUserOptions);
@@ -37,9 +46,11 @@ export class SurfaceFlingerUtils {
       .sort(SurfaceFlingerUtils.compareLayerZ)
       .map((it: Layer) => {
         const transform: TransformMatrix = it.rect.transform?.matrix ?? it.rect.transform;
-        const rect: Rectangle = {
-          topLeft: {x: it.rect.left, y: it.rect.top},
-          bottomRight: {x: it.rect.right, y: it.rect.bottom},
+        const rect: UiRect = {
+          x: it.rect.left,
+          y: it.rect.top,
+          w: it.rect.right - it.rect.left,
+          h: it.rect.bottom - it.rect.top,
           label: it.rect.label,
           transform,
           isVisible: it.isVisible,
@@ -49,8 +60,7 @@ export class SurfaceFlingerUtils {
           isVirtual: false,
           isClickable: true,
           cornerRadius: it.cornerRadius,
-          // TODO(b/291213403): should read this data from the trace instead of a global variable
-          hasContent: ParserViewCapture.packageNames.includes(
+          hasContent: viewCapturePackageNames.includes(
             it.rect.label.substring(0, it.rect.label.indexOf('/'))
           ),
         };
@@ -58,16 +68,18 @@ export class SurfaceFlingerUtils {
       });
   }
 
-  private static makeDisplayRects(entry: LayerTraceEntry): Rectangle[] {
+  private static makeDisplayRects(entry: LayerTraceEntry): UiRect[] {
     if (!entry.displays) {
       return [];
     }
 
     return entry.displays?.map((display: any) => {
       const transform: TransformMatrix = display.transform?.matrix ?? display.transform;
-      const rect: Rectangle = {
-        topLeft: {x: 0, y: 0},
-        bottomRight: {x: display.size.width, y: display.size.height},
+      const rect: UiRect = {
+        x: 0,
+        y: 0,
+        w: display.size.width,
+        h: display.size.height,
         label: 'Display',
         transform,
         isVisible: false,

@@ -24,7 +24,7 @@ import {ParserFactory} from './parser_factory';
 describe('Parser', () => {
   it('is robust to empty trace file', async () => {
     const trace = new TraceFile(await UnitTestUtils.getFixtureFile('traces/empty.pb'), undefined);
-    const [parsers, errors] = await new ParserFactory().createParsers([trace]);
+    const parsers = await new ParserFactory().createParsers([trace]);
     expect(parsers.length).toEqual(0);
   });
 
@@ -34,31 +34,6 @@ describe('Parser', () => {
     expect(parser.getTraceType()).toEqual(TraceType.INPUT_METHOD_CLIENTS);
     expect(parser.getTimestamps(TimestampType.ELAPSED)).toEqual([]);
     expect(parser.getTimestamps(TimestampType.REAL)).toEqual([]);
-  });
-
-  it('retrieves partial trace entries', async () => {
-    {
-      const parser = await UnitTestUtils.getParser(
-        'traces/elapsed_and_real_timestamp/SurfaceFlinger.pb'
-      );
-      const entries = await parser.getPartialProtos({start: 0, end: 3}, 'vsyncId');
-      entries.forEach((entry) => {
-        // convert Long to bigint
-        (entry as any).vsyncId = BigInt((entry as any).vsyncId.toString());
-      });
-      expect(entries).toEqual([{vsyncId: 4891n}, {vsyncId: 5235n}, {vsyncId: 5748n}]);
-    }
-    {
-      const parser = await UnitTestUtils.getParser(
-        'traces/elapsed_and_real_timestamp/Transactions.pb'
-      );
-      const entries = await parser.getPartialProtos({start: 0, end: 3}, 'vsyncId');
-      entries.forEach((entry) => {
-        // convert Long to bigint
-        (entry as any).vsyncId = BigInt((entry as any).vsyncId.toString());
-      });
-      expect(entries).toEqual([{vsyncId: 1n}, {vsyncId: 2n}, {vsyncId: 3n}]);
-    }
   });
 
   describe('real timestamp', () => {

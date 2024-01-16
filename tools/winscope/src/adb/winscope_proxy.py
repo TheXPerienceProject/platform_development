@@ -23,6 +23,8 @@
 #     run: python3 winscope_proxy.py
 #
 
+import argparse
+import base64
 import json
 import logging
 import os
@@ -37,14 +39,26 @@ from abc import abstractmethod
 from enum import Enum
 from http import HTTPStatus
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from logging import DEBUG, INFO, WARNING
 from tempfile import NamedTemporaryFile
-import base64
+
+# GLOBALS #
+
+log = None
+secret_token = None
 
 # CONFIG #
 
-LOG_LEVEL = logging.DEBUG
+def create_argument_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description='Proxy for go/winscope', prog='winscope_proxy')
 
-PORT = 5544
+    parser.add_argument('--verbose', '-v', dest='loglevel', action='store_const', const=INFO)
+    parser.add_argument('--debug', '-d', dest='loglevel', action='store_const', const=DEBUG)
+    parser.add_argument('--port', '-p', default=5544, action='store')
+
+    parser.set_defaults(loglevel=WARNING)
+
+    return parser
 
 # Keep in sync with ProxyClient#VERSION in Winscope
 VERSION = '1.2'
@@ -66,7 +80,8 @@ function is_perfetto_data_source_available {
 
 function is_any_perfetto_data_source_available {
     if is_perfetto_data_source_available android.surfaceflinger.layers || \
-       is_perfetto_data_source_available android.surfaceflinger.transactions; then
+       is_perfetto_data_source_available android.surfaceflinger.transactions || \
+       is_perfetto_data_source_available com.android.wm.shell.transition; then
         return 0
     else
         return 1
@@ -90,11 +105,6 @@ WINSCOPE_DIR = "/data/misc/wmtrace/"
 
 # Max interval between the client keep-alive requests in seconds
 KEEP_ALIVE_INTERVAL_S = 5
-
-logging.basicConfig(stream=sys.stderr, level=LOG_LEVEL,
-                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-log = logging.getLogger("ADBProxy")
-
 
 class File:
     def __init__(self, file, filetype) -> None:
@@ -170,11 +180,6 @@ TRACE_TARGETS = {
         'su root cmd window tracing start\necho "WM trace started."',
         'su root cmd window tracing stop >/dev/null 2>&1'
     ),
-    "accessibility_trace": TraceTarget(
-        WinscopeFileMatcher("/data/misc/a11ytrace", "a11y_trace", "accessibility_trace"),
-        'su root cmd accessibility start-trace\necho "Accessibility trace started."',
-        'su root cmd accessibility stop-trace >/dev/null 2>&1'
-    ),
     "layers_trace": TraceTarget(
         WinscopeFileMatcher(WINSCOPE_DIR, "layers_trace", "layers_trace"),
         f"""
@@ -195,8 +200,16 @@ fi
 ),
     "screen_recording": TraceTarget(
         File(f'/data/local/tmp/screen.mp4', "screen_recording"),
-        f'screenrecord --bit-rate 8M /data/local/tmp/screen.mp4 >/dev/null 2>&1 &\necho "ScreenRecorder started."',
-        'pkill -l SIGINT screenrecord >/dev/null 2>&1'
+        f'''
+        settings put system show_touches 1 && \
+        settings put system pointer_location 1 && \
+        screenrecord --bugreport --bit-rate 8M /data/local/tmp/screen.mp4 >/dev/null 2>&1 & \
+        echo "ScreenRecorder started."
+        ''',
+        '''settings put system pointer_location 0 && \
+        settings put system show_touches 0 && \
+        pkill -l SIGINT screenrecord >/dev/null 2>&1
+        '''.strip()
     ),
     "transactions": TraceTarget(
         WinscopeFileMatcher(WINSCOPE_DIR, "transactions_trace", "transactions"),
@@ -265,8 +278,27 @@ fi
     "transition_traces": TraceTarget(
         [WinscopeFileMatcher(WINSCOPE_DIR, "wm_transition_trace", "wm_transition_trace"),
          WinscopeFileMatcher(WINSCOPE_DIR, "shell_transition_trace", "shell_transition_trace")],
-        'su root cmd window shell tracing start && su root dumpsys activity service SystemUIService WMShell transitions tracing start\necho "Transition traces started."',
-        'su root cmd window shell tracing stop && su root dumpsys activity service SystemUIService WMShell transitions tracing stop >/dev/null 2>&1'
+         f"""
+if is_perfetto_data_source_available com.android.wm.shell.transition; then
+    cat << EOF >> {PERFETTO_TRACE_CONFIG_FILE}
+data_sources: {{
+    config {{
+        name: "com.android.wm.shell.transition"
+    }}
+}}
+EOF
+    echo 'Transition trace (perfetto) configured to start along the other perfetto traces'
+else
+    su root cmd window shell tracing start && su root dumpsys activity service SystemUIService WMShell transitions tracing start
+    echo "Transition traces (legacy) started."
+fi
+        """,
+        """
+if ! is_perfetto_data_source_available com.android.wm.shell.transition; then
+    su root cmd window shell tracing stop && su root dumpsys activity service SystemUIService WMShell transitions tracing stop >/dev/null 2>&1
+    echo 'Transition traces (legacy) stopped.'
+fi
+"""
     ),
     "perfetto_trace": TraceTarget(
         File(PERFETTO_TRACE_FILE, "trace.perfetto-trace"),
@@ -512,9 +544,6 @@ def get_token() -> str:
         return token
 
 
-secret_token = get_token()
-
-
 class RequestType(Enum):
     GET = 1
     POST = 2
@@ -650,7 +679,7 @@ class CheckWaylandServiceEndpoint(RequestEndpoint):
 
 
 class ListDevicesEndpoint(RequestEndpoint):
-    ADB_INFO_RE = re.compile("^([A-Za-z0-9.:\\-]+)\\s+(\\w+)(.*model:(\\w+))?")
+    ADB_INFO_RE = re.compile("^([A-Za-z0-9._:\\-]+)\\s+(\\w+)(.*model:(\\w+))?")
     _foundDevices = None
 
     def process(self, server, path):
@@ -1087,9 +1116,18 @@ class ADBWinscopeProxy(BaseHTTPRequestHandler):
 
 
 if __name__ == '__main__':
+    args = create_argument_parser().parse_args()
+
+    logging.basicConfig(stream=sys.stderr, level=args.loglevel,
+                        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+    log = logging.getLogger("ADBProxy")
+    secret_token = get_token()
+
     print("Winscope ADB Connect proxy version: " + VERSION)
     print('Winscope token: ' + secret_token)
-    httpd = HTTPServer(('localhost', PORT), ADBWinscopeProxy)
+
+    httpd = HTTPServer(('localhost', args.port), ADBWinscopeProxy)
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

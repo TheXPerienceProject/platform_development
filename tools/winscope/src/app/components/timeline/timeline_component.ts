@@ -35,13 +35,11 @@ import {FunctionUtils} from 'common/function_utils';
 import {StringUtils} from 'common/string_utils';
 import {ElapsedTimestamp, RealTimestamp, Timestamp, TimestampType} from 'common/time';
 import {TimeUtils} from 'common/time_utils';
-import {
-  OnTracePositionUpdate,
-  TracePositionUpdateEmitter,
-} from 'interfaces/trace_position_update_emitter';
-import {TracePositionUpdateListener} from 'interfaces/trace_position_update_listener';
+import {TracePositionUpdate, WinscopeEvent, WinscopeEventType} from 'messaging/winscope_event';
+import {EmitEvent, WinscopeEventEmitter} from 'messaging/winscope_event_emitter';
+import {WinscopeEventListener} from 'messaging/winscope_event_listener';
 import {TracePosition} from 'trace/trace_position';
-import {TraceType} from 'trace/trace_type';
+import {TraceType, TraceTypeUtils} from 'trace/trace_type';
 
 @Component({
   selector: 'timeline',
@@ -77,8 +75,9 @@ import {TraceType} from 'trace/trace_type';
           </button>
           <form [formGroup]="timestampForm" class="time-selector-form">
             <mat-form-field
-              class="time-input"
+              class="time-input elapsed"
               appearance="fill"
+              (keydown.enter)="onKeydownEnterElapsedTimeInputField($event)"
               (change)="onHumanElapsedTimeInputChange($event)"
               *ngIf="!usingRealtime()">
               <input
@@ -87,8 +86,9 @@ import {TraceType} from 'trace/trace_type';
                 [formControl]="selectedElapsedTimeFormControl" />
             </mat-form-field>
             <mat-form-field
-              class="time-input"
+              class="time-input real"
               appearance="fill"
+              (keydown.enter)="onKeydownEnterRealTimeInputField($event)"
               (change)="onHumanRealTimeInputChange($event)"
               *ngIf="usingRealtime()">
               <input
@@ -97,8 +97,9 @@ import {TraceType} from 'trace/trace_type';
                 [formControl]="selectedRealTimeFormControl" />
             </mat-form-field>
             <mat-form-field
-              class="time-input"
+              class="time-input nano"
               appearance="fill"
+              (keydown.enter)="onKeydownEnterNanosecondsTimeInputField($event)"
               (change)="onNanosecondsInputTimeChange($event)">
               <input matInput name="nsTimeInput" [formControl]="selectedNsFormControl" />
             </mat-form-field>
@@ -114,35 +115,28 @@ import {TraceType} from 'trace/trace_type';
         </div>
         <div id="trace-selector">
           <mat-form-field appearance="none">
-            <mat-select
-              #traceSelector
-              [formControl]="selectedTracesFormControl"
-              multiple
-              (closed)="onTraceSelectionClosed()">
+            <mat-select #traceSelector [formControl]="selectedTracesFormControl" multiple>
               <div class="tip">Select up to 2 additional traces to display.</div>
               <mat-option
-                *ngFor="let trace of availableTraces"
+                *ngFor="let trace of sortedAvailableTraces"
                 [value]="trace"
                 [style]="{
                   color: TRACE_INFO[trace].color,
                   opacity: isOptionDisabled(trace) ? 0.5 : 1.0
                 }"
-                [disabled]="isOptionDisabled(trace)">
+                [disabled]="isOptionDisabled(trace)"
+                (click)="applyNewTraceSelection()">
                 <mat-icon>{{ TRACE_INFO[trace].icon }}</mat-icon>
                 {{ TRACE_INFO[trace].name }}
               </mat-option>
               <div class="actions">
-                <button mat-button color="primary" (click)="traceSelector.close()">Cancel</button>
-                <button
-                  mat-flat-button
-                  color="primary"
-                  (click)="applyNewTraceSelection(); traceSelector.close()">
-                  Apply
+                <button mat-flat-button color="primary" (click)="traceSelector.close()">
+                  Done
                 </button>
               </div>
               <mat-select-trigger class="shown-selection">
                 <mat-icon
-                  *ngFor="let selectedTrace of selectedTraces"
+                  *ngFor="let selectedTrace of getSelectedTracesSortedByDisplayOrder()"
                   [style]="{color: TRACE_INFO[selectedTrace].color}">
                   {{ TRACE_INFO[selectedTrace].icon }}
                 </mat-icon>
@@ -172,7 +166,7 @@ import {TraceType} from 'trace/trace_type';
       </ng-template>
       <div *ngIf="!timelineData.hasTimestamps()" class="no-timestamps-msg">
         <p class="mat-body-2">No timeline to show!</p>
-        <p class="mat-body-1">All loaded traces contain no timestamps!</p>
+        <p class="mat-body-1">All loaded traces contain no timestamps.</p>
       </div>
       <div
         *ngIf="timelineData.hasTimestamps() && !timelineData.hasMoreThanOneDistinctTimestamp()"
@@ -241,6 +235,9 @@ import {TraceType} from 'trace/trace_type';
       #expanded-timeline {
         flex-grow: 1;
       }
+      #trace-selector {
+        padding-bottom: 20px;
+      }
       #trace-selector .mat-form-field-infix {
         width: 50px;
         padding: 0 0.75rem 0 0.5rem;
@@ -292,7 +289,7 @@ import {TraceType} from 'trace/trace_type';
     `,
   ],
 })
-export class TimelineComponent implements TracePositionUpdateEmitter, TracePositionUpdateListener {
+export class TimelineComponent implements WinscopeEventEmitter, WinscopeEventListener {
   readonly TOGGLE_BUTTON_CLASS: string = 'button-toggle-expansion';
   readonly MAX_SELECTED_TRACES = 3;
 
@@ -307,9 +304,9 @@ export class TimelineComponent implements TracePositionUpdateEmitter, TracePosit
 
     this.internalActiveTrace = types[0];
 
-    if (!this.selectedTraces.includes(this.internalActiveTrace)) {
-      this.selectedTraces.push(this.internalActiveTrace);
-    }
+    // Even if new active trace already selected, push to array as most recent selection
+    this.selectedTraces = this.selectedTraces.filter((type) => type !== this.internalActiveTrace);
+    this.selectedTraces.push(this.internalActiveTrace);
 
     if (this.selectedTraces.length > this.MAX_SELECTED_TRACES) {
       // Maxed capacity so remove oldest selected trace
@@ -328,9 +325,12 @@ export class TimelineComponent implements TracePositionUpdateEmitter, TracePosit
 
   @ViewChild('collapsedTimeline') private collapsedTimelineRef!: ElementRef;
 
+  videoUrl: SafeUrl | undefined;
+
   internalActiveTrace: TraceType | undefined = undefined;
   selectedTraces: TraceType[] = [];
-  selectedTracesFormControl = new FormControl();
+  sortedAvailableTraces: TraceType[] = [];
+  selectedTracesFormControl = new FormControl<TraceType[]>([]);
   selectedElapsedTimeFormControl = new FormControl(
     'undefined',
     Validators.compose([
@@ -354,12 +354,11 @@ export class TimelineComponent implements TracePositionUpdateEmitter, TracePosit
     selectedRealTime: this.selectedRealTimeFormControl,
     selectedNs: this.selectedNsFormControl,
   });
-  videoUrl: SafeUrl | undefined;
   TRACE_INFO = TRACE_INFO;
   isInputFormFocused = false;
 
   private expanded = false;
-  private onTracePositionUpdateCallback: OnTracePositionUpdate = FunctionUtils.DO_NOTHING_ASYNC;
+  private emitEvent: EmitEvent = FunctionUtils.DO_NOTHING_ASYNC;
 
   constructor(
     @Inject(DomSanitizer) private sanitizer: DomSanitizer,
@@ -377,6 +376,10 @@ export class TimelineComponent implements TracePositionUpdateEmitter, TracePosit
         URL.createObjectURL(screenRecordingVideo)
       );
     }
+
+    this.sortedAvailableTraces = this.availableTraces.sort((a, b) =>
+      TraceTypeUtils.compareByDisplayOrder(a, b)
+    ); // to display in fixed order corresponding to viewer tabs
   }
 
   ngAfterViewInit() {
@@ -384,8 +387,8 @@ export class TimelineComponent implements TracePositionUpdateEmitter, TracePosit
     this.collapsedTimelineSizeChanged.emit(height);
   }
 
-  setOnTracePositionUpdate(callback: OnTracePositionUpdate) {
-    this.onTracePositionUpdateCallback = callback;
+  setEmitEvent(callback: EmitEvent) {
+    this.emitEvent = callback;
   }
 
   getVideoCurrentTime() {
@@ -409,8 +412,14 @@ export class TimelineComponent implements TracePositionUpdateEmitter, TracePosit
     return position;
   }
 
-  onTracePositionUpdate(position: TracePosition) {
-    this.updateTimeInputValuesToCurrentTimestamp();
+  getSelectedTracesSortedByDisplayOrder(): TraceType[] {
+    return this.selectedTraces.slice().sort((a, b) => TraceTypeUtils.compareByDisplayOrder(a, b));
+  }
+
+  async onWinscopeEvent(event: WinscopeEvent) {
+    await event.visit(WinscopeEventType.TRACE_POSITION_UPDATE, async () => {
+      this.updateTimeInputValuesToCurrentTimestamp();
+    });
   }
 
   toggleExpand() {
@@ -420,7 +429,7 @@ export class TimelineComponent implements TracePositionUpdateEmitter, TracePosit
 
   async updatePosition(position: TracePosition) {
     this.timelineData.setPosition(position);
-    await this.onTracePositionUpdateCallback(position);
+    await this.emitEvent(new TracePositionUpdate(position));
   }
 
   usingRealtime(): boolean {
@@ -467,12 +476,8 @@ export class TimelineComponent implements TracePositionUpdateEmitter, TracePosit
     return false;
   }
 
-  onTraceSelectionClosed() {
-    this.selectedTracesFormControl.setValue(this.selectedTraces);
-  }
-
   applyNewTraceSelection() {
-    this.selectedTraces = this.selectedTracesFormControl.value;
+    this.selectedTraces = this.selectedTracesFormControl.value ?? [];
   }
 
   @HostListener('document:focusin', ['$event'])
@@ -510,7 +515,7 @@ export class TimelineComponent implements TracePositionUpdateEmitter, TracePosit
   }
 
   hasPrevEntry(): boolean {
-    if (!this.internalActiveTrace) {
+    if (this.internalActiveTrace === undefined) {
       return false;
     }
     if (this.timelineData.getTraces().getTrace(this.internalActiveTrace) === undefined) {
@@ -520,7 +525,7 @@ export class TimelineComponent implements TracePositionUpdateEmitter, TracePosit
   }
 
   hasNextEntry(): boolean {
-    if (!this.internalActiveTrace) {
+    if (this.internalActiveTrace === undefined) {
       return false;
     }
     if (this.timelineData.getTraces().getTrace(this.internalActiveTrace) === undefined) {
@@ -530,19 +535,21 @@ export class TimelineComponent implements TracePositionUpdateEmitter, TracePosit
   }
 
   async moveToPreviousEntry() {
-    if (!this.internalActiveTrace) {
+    if (this.internalActiveTrace === undefined) {
       return;
     }
     this.timelineData.moveToPreviousEntryFor(this.internalActiveTrace);
-    await this.onTracePositionUpdateCallback(assertDefined(this.timelineData.getCurrentPosition()));
+    const position = assertDefined(this.timelineData.getCurrentPosition());
+    await this.emitEvent(new TracePositionUpdate(position));
   }
 
   async moveToNextEntry() {
-    if (!this.internalActiveTrace) {
+    if (this.internalActiveTrace === undefined) {
       return;
     }
     this.timelineData.moveToNextEntryFor(this.internalActiveTrace);
-    await this.onTracePositionUpdateCallback(assertDefined(this.timelineData.getCurrentPosition()));
+    const position = assertDefined(this.timelineData.getCurrentPosition());
+    await this.emitEvent(new TracePositionUpdate(position));
   }
 
   async onHumanElapsedTimeInputChange(event: Event) {
@@ -578,5 +585,23 @@ export class TimelineComponent implements TracePositionUpdateEmitter, TracePosit
     );
     await this.updatePosition(this.timelineData.makePositionFromActiveTrace(timestamp));
     this.updateTimeInputValuesToCurrentTimestamp();
+  }
+
+  onKeydownEnterElapsedTimeInputField(event: KeyboardEvent) {
+    if (this.selectedElapsedTimeFormControl.valid) {
+      (event.target as HTMLInputElement).blur();
+    }
+  }
+
+  onKeydownEnterRealTimeInputField(event: KeyboardEvent) {
+    if (this.selectedRealTimeFormControl.valid) {
+      (event.target as HTMLInputElement).blur();
+    }
+  }
+
+  onKeydownEnterNanosecondsTimeInputField(event: KeyboardEvent) {
+    if (this.selectedNsFormControl.valid) {
+      (event.target as HTMLInputElement).blur();
+    }
   }
 }

@@ -32,6 +32,7 @@ import {
   MatDrawerContent,
 } from 'app/components/bottomnav/bottom_drawer_component';
 import {TimelineData} from 'app/timeline_data';
+import {TRACE_INFO} from 'app/trace_info';
 import {assertDefined} from 'common/assert_utils';
 import {RealTimestamp} from 'common/time';
 import {TracesBuilder} from 'test/unit/traces_builder';
@@ -110,8 +111,7 @@ describe('TimelineComponent', () => {
     component.timelineData.initialize(traces, undefined);
     fixture.detectChanges();
 
-    const button = htmlElement.querySelector(`.${component.TOGGLE_BUTTON_CLASS}`);
-    expect(button).toBeTruthy();
+    const button = assertDefined(htmlElement.querySelector(`.${component.TOGGLE_BUTTON_CLASS}`));
 
     // initially not expanded
     let expandedTimelineElement = fixture.debugElement.query(
@@ -119,11 +119,11 @@ describe('TimelineComponent', () => {
     );
     expect(expandedTimelineElement).toBeFalsy();
 
-    assertDefined(button).dispatchEvent(new Event('click'));
+    button.dispatchEvent(new Event('click'));
     expandedTimelineElement = fixture.debugElement.query(By.directive(ExpandedTimelineComponent));
     expect(expandedTimelineElement).toBeTruthy();
 
-    assertDefined(button).dispatchEvent(new Event('click'));
+    button.dispatchEvent(new Event('click'));
     expandedTimelineElement = fixture.debugElement.query(By.directive(ExpandedTimelineComponent));
     expect(expandedTimelineElement).toBeFalsy();
   });
@@ -142,8 +142,8 @@ describe('TimelineComponent', () => {
     expect(miniTimelineElement).toBeFalsy();
 
     // error message shown
-    const errorMessageContainer = htmlElement.querySelector('.no-timestamps-msg');
-    expect(assertDefined(errorMessageContainer).textContent).toContain('No timeline to show!');
+    const errorMessageContainer = assertDefined(htmlElement.querySelector('.no-timestamps-msg'));
+    expect(errorMessageContainer.textContent).toContain('No timeline to show!');
   });
 
   it('handles some empty traces', () => {
@@ -160,6 +160,7 @@ describe('TimelineComponent', () => {
     expect(component.internalActiveTrace).toEqual(TraceType.SURFACE_FLINGER);
     expect(component.selectedTraces).toEqual([TraceType.SURFACE_FLINGER]);
 
+    // setting same trace as active does not affect selected traces
     component.activeViewTraceTypes = [TraceType.SURFACE_FLINGER];
     expect(component.internalActiveTrace).toEqual(TraceType.SURFACE_FLINGER);
     expect(component.selectedTraces).toEqual([TraceType.SURFACE_FLINGER]);
@@ -176,12 +177,30 @@ describe('TimelineComponent', () => {
       TraceType.WINDOW_MANAGER,
     ]);
 
+    // oldest trace to be selected is replaced (SF)
     component.activeViewTraceTypes = [TraceType.PROTO_LOG];
     expect(component.internalActiveTrace).toEqual(TraceType.PROTO_LOG);
     expect(component.selectedTraces).toEqual([
       TraceType.TRANSACTIONS,
       TraceType.WINDOW_MANAGER,
       TraceType.PROTO_LOG,
+    ]);
+
+    // setting active trace that is already selected causes it to become most recent selection
+    component.activeViewTraceTypes = [TraceType.TRANSACTIONS];
+    expect(component.internalActiveTrace).toEqual(TraceType.TRANSACTIONS);
+    expect(component.selectedTraces).toEqual([
+      TraceType.WINDOW_MANAGER,
+      TraceType.PROTO_LOG,
+      TraceType.TRANSACTIONS,
+    ]);
+
+    component.activeViewTraceTypes = [TraceType.SURFACE_FLINGER];
+    expect(component.internalActiveTrace).toEqual(TraceType.SURFACE_FLINGER);
+    expect(component.selectedTraces).toEqual([
+      TraceType.PROTO_LOG,
+      TraceType.TRANSACTIONS,
+      TraceType.SURFACE_FLINGER,
     ]);
   });
 
@@ -199,13 +218,91 @@ describe('TimelineComponent', () => {
     expect(component.selectedTraces).toEqual([TraceType.SURFACE_FLINGER]);
   });
 
+  it('sorts selected traces correctly for display in selection trigger', () => {
+    loadTracesForSelectorTest();
+
+    fixture.whenStable().then(() => {
+      let selectionTriggerIcons = Array.from(
+        htmlElement.querySelectorAll('.mat-select-trigger .mat-icon')
+      );
+      expect(selectionTriggerIcons.length).toEqual(1);
+      expect(selectionTriggerIcons[0].innerHTML).toContain(
+        TRACE_INFO[TraceType.SURFACE_FLINGER].icon
+      );
+
+      component.activeViewTraceTypes = [TraceType.TRANSACTIONS];
+      selectionTriggerIcons = Array.from(
+        htmlElement.querySelectorAll('.mat-select-trigger mat-icon')
+      );
+      expect(selectionTriggerIcons.length).toEqual(2);
+      expect(selectionTriggerIcons[0].innerHTML).toContain(
+        TRACE_INFO[TraceType.SURFACE_FLINGER].icon
+      );
+      expect(selectionTriggerIcons[1].innerHTML).toContain(TRACE_INFO[TraceType.TRANSACTIONS].icon);
+
+      component.activeViewTraceTypes = [TraceType.WINDOW_MANAGER];
+      selectionTriggerIcons = Array.from(
+        htmlElement.querySelectorAll('.mat-select-trigger mat-icon')
+      );
+      expect(selectionTriggerIcons.length).toEqual(3);
+      expect(selectionTriggerIcons[0].innerHTML).toContain(
+        TRACE_INFO[TraceType.SURFACE_FLINGER].icon
+      );
+      expect(selectionTriggerIcons[1].innerHTML).toContain(
+        TRACE_INFO[TraceType.WINDOW_MANAGER].icon
+      );
+      expect(selectionTriggerIcons[2].innerHTML).toContain(TRACE_INFO[TraceType.TRANSACTIONS].icon);
+
+      component.activeViewTraceTypes = [TraceType.PROTO_LOG];
+      selectionTriggerIcons = Array.from(
+        htmlElement.querySelectorAll('.mat-select-trigger mat-icon')
+      );
+      expect(selectionTriggerIcons.length).toEqual(3);
+      expect(selectionTriggerIcons[0].innerHTML).toContain(
+        TRACE_INFO[TraceType.WINDOW_MANAGER].icon
+      );
+      expect(selectionTriggerIcons[1].innerHTML).toContain(TRACE_INFO[TraceType.TRANSACTIONS].icon);
+      expect(selectionTriggerIcons[2].innerHTML).toContain(TRACE_INFO[TraceType.PROTO_LOG].icon);
+    });
+  });
+
+  it('updates trace selection using selector', () => {
+    loadTracesForSelectorTest();
+
+    const selectTrigger = assertDefined(htmlElement.querySelector('.mat-select-trigger'));
+    (selectTrigger as HTMLElement).click();
+    fixture.detectChanges();
+
+    fixture.whenStable().then(() => {
+      const matOptions = Array.from(
+        assertDefined(htmlElement.querySelectorAll('mat-select mat-option'))
+      );
+
+      expect((matOptions[0] as HTMLInputElement).value).toEqual(`${TraceType.SURFACE_FLINGER}`);
+      expect((matOptions[0] as HTMLInputElement).disabled).toBeTrue();
+      for (let i = 1; i < 4; i++) {
+        expect((matOptions[i] as HTMLInputElement).disabled).toBeFalse();
+      }
+
+      (matOptions[1] as HTMLElement).click();
+      (matOptions[2] as HTMLElement).click();
+      expect(component.selectedTraces).toEqual([
+        TraceType.SURFACE_FLINGER,
+        TraceType.WINDOW_MANAGER,
+        TraceType.SCREEN_RECORDING,
+      ]);
+
+      expect((matOptions[3] as HTMLInputElement).value).toEqual(`${TraceType.PROTO_LOG}`);
+      expect((matOptions[3] as HTMLInputElement).disabled).toBeTrue();
+    });
+  });
+
   it('next button disabled if no next entry', () => {
     loadTraces();
 
     expect(component.timelineData.getCurrentPosition()?.timestamp.getValueNs()).toEqual(100n);
 
-    const nextEntryButton = fixture.debugElement.query(By.css('#next_entry_button'));
-    expect(nextEntryButton).toBeTruthy();
+    const nextEntryButton = assertDefined(fixture.debugElement.query(By.css('#next_entry_button')));
     expect(nextEntryButton.nativeElement.getAttribute('disabled')).toBeFalsy();
 
     component.timelineData.setPosition(position90);
@@ -225,8 +322,7 @@ describe('TimelineComponent', () => {
     loadTraces();
 
     expect(component.timelineData.getCurrentPosition()?.timestamp.getValueNs()).toEqual(100n);
-    const prevEntryButton = fixture.debugElement.query(By.css('#prev_entry_button'));
-    expect(prevEntryButton).toBeTruthy();
+    const prevEntryButton = assertDefined(fixture.debugElement.query(By.css('#prev_entry_button')));
     expect(prevEntryButton.nativeElement.getAttribute('disabled')).toBeTruthy();
 
     component.timelineData.setPosition(position90);
@@ -242,12 +338,24 @@ describe('TimelineComponent', () => {
     expect(prevEntryButton.nativeElement.getAttribute('disabled')).toBeFalsy();
   });
 
+  it('next button enabled for different active viewers', () => {
+    loadTraces();
+
+    const nextEntryButton = assertDefined(fixture.debugElement.query(By.css('#next_entry_button')));
+    expect(nextEntryButton.nativeElement.getAttribute('disabled')).toBeFalsy();
+
+    component.activeViewTraceTypes = [TraceType.WINDOW_MANAGER];
+    component.internalActiveTrace = TraceType.WINDOW_MANAGER;
+    fixture.detectChanges();
+
+    expect(nextEntryButton.nativeElement.getAttribute('disabled')).toBeFalsy();
+  });
+
   it('changes timestamp on next entry button press', () => {
     loadTraces();
 
     expect(component.timelineData.getCurrentPosition()?.timestamp.getValueNs()).toEqual(100n);
-    const nextEntryButton = fixture.debugElement.query(By.css('#next_entry_button'));
-    expect(nextEntryButton).toBeTruthy();
+    const nextEntryButton = assertDefined(fixture.debugElement.query(By.css('#next_entry_button')));
 
     testCurrentTimestampOnButtonClick(nextEntryButton, position105, 110n);
 
@@ -266,8 +374,7 @@ describe('TimelineComponent', () => {
     loadTraces();
 
     expect(component.timelineData.getCurrentPosition()?.timestamp.getValueNs()).toEqual(100n);
-    const prevEntryButton = fixture.debugElement.query(By.css('#prev_entry_button'));
-    expect(prevEntryButton).toBeTruthy();
+    const prevEntryButton = assertDefined(fixture.debugElement.query(By.css('#prev_entry_button')));
 
     // In this state we are already on the first entry at timestamp 100, so
     // there is no entry to move to before and we just don't update the timestamp
@@ -315,7 +422,70 @@ describe('TimelineComponent', () => {
     expect(spyPrevEntry).toHaveBeenCalled();
   });
 
-  const loadTraces = () => {
+  it('updates position based on ns input field', () => {
+    loadTraces();
+
+    expect(component.timelineData.getCurrentPosition()?.timestamp.getValueNs()).toEqual(100n);
+    const timeInputField = assertDefined(fixture.debugElement.query(By.css('.time-input.nano')));
+
+    testCurrentTimestampOnTimeInput(timeInputField, position105, '110 ns', 110n);
+
+    testCurrentTimestampOnTimeInput(timeInputField, position100, '110 ns', 110n);
+
+    testCurrentTimestampOnTimeInput(timeInputField, position90, '100 ns', 100n);
+
+    // No change when we are already on the last timestamp of the active trace
+    testCurrentTimestampOnTimeInput(timeInputField, position110, '110 ns', 110n);
+
+    // No change when we are after the last entry of the active trace
+    testCurrentTimestampOnTimeInput(timeInputField, position112, '112 ns', 112n);
+  });
+
+  it('updates position based on real time input field', () => {
+    loadTraces();
+
+    expect(component.timelineData.getCurrentPosition()?.timestamp.getValueNs()).toEqual(100n);
+    const timeInputField = assertDefined(fixture.debugElement.query(By.css('.time-input.real')));
+
+    testCurrentTimestampOnTimeInput(
+      timeInputField,
+      position105,
+      '1970-01-01T00:00:00.000000110',
+      110n
+    );
+
+    testCurrentTimestampOnTimeInput(
+      timeInputField,
+      position100,
+      '1970-01-01T00:00:00.000000110',
+      110n
+    );
+
+    testCurrentTimestampOnTimeInput(
+      timeInputField,
+      position90,
+      '1970-01-01T00:00:00.000000100',
+      100n
+    );
+
+    // No change when we are already on the last timestamp of the active trace
+    testCurrentTimestampOnTimeInput(
+      timeInputField,
+      position110,
+      '1970-01-01T00:00:00.000000110',
+      110n
+    );
+
+    // No change when we are after the last entry of the active trace
+    testCurrentTimestampOnTimeInput(
+      timeInputField,
+      position112,
+      '1970-01-01T00:00:00.000000112',
+      112n
+    );
+  });
+
+  function loadTraces() {
     const traces = new TracesBuilder()
       .setTimestamps(TraceType.SURFACE_FLINGER, [time100, time110])
       .setTimestamps(TraceType.WINDOW_MANAGER, [time90, time101, time110, time112])
@@ -324,16 +494,50 @@ describe('TimelineComponent', () => {
     component.activeViewTraceTypes = [TraceType.SURFACE_FLINGER];
     component.timelineData.setPosition(position100);
     fixture.detectChanges();
-  };
+  }
 
-  const testCurrentTimestampOnButtonClick = (
+  function loadTracesForSelectorTest() {
+    const traces = new TracesBuilder()
+      .setTimestamps(TraceType.SURFACE_FLINGER, [time100, time110])
+      .setTimestamps(TraceType.WINDOW_MANAGER, [time100, time110])
+      .setTimestamps(TraceType.SCREEN_RECORDING, [time110])
+      .setTimestamps(TraceType.PROTO_LOG, [time100])
+      .build();
+    component.timelineData.initialize(traces, undefined);
+    component.availableTraces = [
+      TraceType.SURFACE_FLINGER,
+      TraceType.WINDOW_MANAGER,
+      TraceType.SCREEN_RECORDING,
+      TraceType.PROTO_LOG,
+    ];
+    component.activeViewTraceTypes = [TraceType.SURFACE_FLINGER];
+    fixture.detectChanges();
+  }
+
+  function testCurrentTimestampOnButtonClick(
     button: DebugElement,
     pos: TracePosition,
     expectedNs: bigint
-  ) => {
+  ) {
     component.timelineData.setPosition(pos);
     fixture.detectChanges();
     button.nativeElement.click();
     expect(component.timelineData.getCurrentPosition()?.timestamp.getValueNs()).toEqual(expectedNs);
-  };
+  }
+
+  function testCurrentTimestampOnTimeInput(
+    inputField: DebugElement,
+    pos: TracePosition,
+    textInput: string,
+    expectedNs: bigint
+  ) {
+    component.timelineData.setPosition(pos);
+    fixture.detectChanges();
+
+    inputField.nativeElement.value = textInput;
+    inputField.nativeElement.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+
+    expect(component.timelineData.getCurrentPosition()?.timestamp.getValueNs()).toEqual(expectedNs);
+  }
 });

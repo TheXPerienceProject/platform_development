@@ -14,20 +14,20 @@
  * limitations under the License.
  */
 
-import {AppEvent, TabbedViewSwitchRequest} from 'app/app_event';
 import {FunctionUtils} from 'common/function_utils';
-import {EmitAppEvent} from 'interfaces/app_event_emitter';
+import {TabbedViewSwitchRequest, WinscopeEvent} from 'messaging/winscope_event';
+import {EmitEvent} from 'messaging/winscope_event_emitter';
 import {Traces} from 'trace/traces';
 import {TraceType} from 'trace/trace_type';
 import {ViewerEvents} from 'viewers/common/viewer_events';
-import {NEXUS_LAUNCHER_PACKAGE_NAME} from 'viewers/common/view_capture_constants';
+import {ViewCaptureUtils} from 'viewers/common/view_capture_utils';
 import {View, Viewer, ViewType} from 'viewers/viewer';
 import {Presenter} from './presenter';
 import {UiData} from './ui_data';
 
 class ViewerSurfaceFlinger implements Viewer {
   static readonly DEPENDENCIES: TraceType[] = [TraceType.SURFACE_FLINGER];
-  private emitAppEvent: EmitAppEvent = FunctionUtils.DO_NOTHING_ASYNC;
+  private emitAppEvent: EmitEvent = FunctionUtils.DO_NOTHING_ASYNC;
   private readonly htmlElement: HTMLElement;
   private readonly presenter: Presenter;
 
@@ -63,17 +63,21 @@ class ViewerSurfaceFlinger implements Viewer {
       this.presenter.newPropertiesTree((event as CustomEvent).detail.selectedItem)
     );
     this.htmlElement.addEventListener(ViewerEvents.RectsDblClick, (event) => {
-      if ((event as CustomEvent).detail.clickedRectId.includes(NEXUS_LAUNCHER_PACKAGE_NAME)) {
+      if (
+        (event as CustomEvent).detail.clickedRectId.includes(
+          ViewCaptureUtils.NEXUS_LAUNCHER_PACKAGE_NAME
+        )
+      ) {
         this.switchToNexusLauncherViewer();
       }
     });
   }
 
-  async onAppEvent(event: AppEvent) {
+  async onWinscopeEvent(event: WinscopeEvent) {
     await this.presenter.onAppEvent(event);
   }
 
-  setEmitAppEvent(callback: EmitAppEvent) {
+  setEmitEvent(callback: EmitEvent) {
     this.emitAppEvent = callback;
   }
 

@@ -18,7 +18,6 @@ import {ScrollingModule} from '@angular/cdk/scrolling';
 import {CUSTOM_ELEMENTS_SCHEMA, NO_ERRORS_SCHEMA} from '@angular/core';
 import {ComponentFixture, ComponentFixtureAutoDetect, TestBed} from '@angular/core/testing';
 import {MatDividerModule} from '@angular/material/divider';
-import {TracePositionUpdate} from 'app/app_event';
 import {assertDefined} from 'common/assert_utils';
 import {TimestampType} from 'common/time';
 import {
@@ -29,13 +28,10 @@ import {
   TransitionType,
   WmTransitionData,
 } from 'flickerlib/common';
-import {ParserTransitionsShell} from 'parsers/parser_transitions_shell';
-import {ParserTransitionsWm} from 'parsers/parser_transitions_wm';
-import {TracesParserTransitions} from 'parsers/traces_parser_transitions';
+import {TracePositionUpdate} from 'messaging/winscope_event';
 import {UnitTestUtils} from 'test/unit/utils';
 import {Trace} from 'trace/trace';
 import {Traces} from 'trace/traces';
-import {TraceFile} from 'trace/trace_file';
 import {TracePosition} from 'trace/trace_position';
 import {TraceType} from 'trace/trace_type';
 import {TreeComponent} from 'viewers/components/tree_component';
@@ -126,26 +122,12 @@ describe('ViewerTransitionsComponent', () => {
   });
 
   it('updates tree view on TracePositionUpdate event', async () => {
-    const wmTransFile = new TraceFile(
-      await UnitTestUtils.getFixtureFile('traces/elapsed_and_real_timestamp/wm_transition_trace.pb')
-    );
-    const shellTransFile = new TraceFile(
-      await UnitTestUtils.getFixtureFile(
-        'traces/elapsed_and_real_timestamp/shell_transition_trace.pb'
-      )
-    );
-
-    const wmTrans = new ParserTransitionsWm(wmTransFile);
-    await wmTrans.parse();
-    const shellTrans = new ParserTransitionsShell(shellTransFile);
-    await shellTrans.parse();
-
-    const transitionsTraceParser = new TracesParserTransitions([wmTrans, shellTrans]);
-    await transitionsTraceParser.parse();
-
+    const parser = await UnitTestUtils.getTracesParser([
+      'traces/elapsed_and_real_timestamp/wm_transition_trace.pb',
+      'traces/elapsed_and_real_timestamp/shell_transition_trace.pb',
+    ]);
+    const trace = Trace.fromParser(parser, TimestampType.REAL);
     const traces = new Traces();
-    const trace = Trace.newUninitializedTrace(transitionsTraceParser);
-    trace.init(TimestampType.REAL);
     traces.setTrace(TraceType.TRANSITION, trace);
 
     let treeView = assertDefined(

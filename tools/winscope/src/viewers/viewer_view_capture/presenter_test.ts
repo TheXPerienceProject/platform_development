@@ -14,15 +14,17 @@
  * limitations under the License.
  */
 
-import {TracePositionUpdate} from 'app/app_event';
-import {RealTimestamp, TimestampType} from 'common/time';
+import {RealTimestamp} from 'common/time';
+import {TracePositionUpdate} from 'messaging/winscope_event';
 import {HierarchyTreeBuilder} from 'test/unit/hierarchy_tree_builder';
 import {MockStorage} from 'test/unit/mock_storage';
 import {TraceBuilder} from 'test/unit/trace_builder';
 import {UnitTestUtils} from 'test/unit/utils';
+import {CustomQueryType} from 'trace/custom_query';
 import {Parser} from 'trace/parser';
 import {Trace} from 'trace/trace';
 import {Traces} from 'trace/traces';
+import {TraceType} from 'trace/trace_type';
 import {HierarchyTreeNode} from 'viewers/common/ui_tree_utils';
 import {UserOptions} from 'viewers/common/user_options';
 import {Presenter} from 'viewers/viewer_view_capture/presenter';
@@ -41,11 +43,8 @@ describe('PresenterViewCapture', () => {
       'traces/elapsed_and_real_timestamp/com.google.android.apps.nexuslauncher_0.vc'
     );
     trace = new TraceBuilder<object>()
-      .setEntries([
-        parser.getEntry(0, TimestampType.REAL),
-        parser.getEntry(1, TimestampType.REAL),
-        parser.getEntry(2, TimestampType.REAL),
-      ])
+      .setType(TraceType.VIEW_CAPTURE_LAUNCHER_ACTIVITY)
+      .setParser(parser)
       .build();
     positionUpdate = TracePositionUpdate.fromTraceEntry(trace.getEntry(0));
     selectedTree = new HierarchyTreeBuilder()
@@ -62,7 +61,11 @@ describe('PresenterViewCapture', () => {
   });
 
   it('is robust to empty trace', async () => {
-    const emptyTrace = new TraceBuilder<object>().setEntries([]).build();
+    const emptyTrace = new TraceBuilder<object>()
+      .setType(TraceType.VIEW_CAPTURE_LAUNCHER_ACTIVITY)
+      .setEntries([])
+      .setParserCustomQueryResult(CustomQueryType.VIEW_CAPTURE_PACKAGE_NAME, 'the_package_name')
+      .build();
     const presenter = createPresenter(emptyTrace);
 
     const positionUpdateWithoutTraceEntry = TracePositionUpdate.fromTimestamp(
@@ -88,8 +91,10 @@ describe('PresenterViewCapture', () => {
   it('creates input data for rects view', async () => {
     await presenter.onAppEvent(positionUpdate);
     expect(uiData.rects.length).toBeGreaterThan(0);
-    expect(uiData.rects[0].topLeft).toEqual({x: 0, y: 0});
-    expect(uiData.rects[0].bottomRight).toEqual({x: 1080, y: 249});
+    expect(uiData.rects[0].x).toEqual(0);
+    expect(uiData.rects[0].y).toEqual(0);
+    expect(uiData.rects[0].w).toEqual(1080);
+    expect(uiData.rects[0].h).toEqual(249);
   });
 
   it('updates pinned items', async () => {

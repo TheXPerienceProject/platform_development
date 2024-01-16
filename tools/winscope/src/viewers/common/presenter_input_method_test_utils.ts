@@ -14,8 +14,8 @@
  * limitations under the License.d
  */
 
-import {TracePositionUpdate} from 'app/app_event';
 import {assertDefined} from 'common/assert_utils';
+import {TracePositionUpdate} from 'messaging/winscope_event';
 import {HierarchyTreeBuilder} from 'test/unit/hierarchy_tree_builder';
 import {MockStorage} from 'test/unit/mock_storage';
 import {TracesBuilder} from 'test/unit/traces_builder';
@@ -199,7 +199,7 @@ export function executePresenterInputMethodTests(
       expect(nonTerminalChildren.length).toEqual(expectedChildren[1]);
     });
 
-    const setUpTestEnvironment = async (traceTypes: TraceType[]) => {
+    async function setUpTestEnvironment(traceTypes: TraceType[]) {
       const traces = new Traces();
       const entries = await UnitTestUtils.getImeTraceEntries();
 
@@ -215,9 +215,9 @@ export function executePresenterInputMethodTests(
 
       const entry = assertDefined(traces.getTrace(imeTraceType)).getEntry(0);
       positionUpdate = TracePositionUpdate.fromTraceEntry(entry);
-    };
+    }
 
-    const createPresenter = (traces: Traces): PresenterInputMethod => {
+    function createPresenter(traces: Traces): PresenterInputMethod {
       return new PresenterInputMethod(
         traces,
         new MockStorage(),
@@ -226,6 +226,6 @@ export function executePresenterInputMethodTests(
           uiData = newData;
         }
       );
-    };
+    }
   });
 }

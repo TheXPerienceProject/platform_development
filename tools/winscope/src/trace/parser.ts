@@ -14,7 +14,12 @@
  * limitations under the License.
  */
 
-import {Timestamp, TimestampType} from '../common/time';
+import {Timestamp, TimestampType} from 'common/time';
+import {
+  CustomQueryParamTypeMap,
+  CustomQueryParserResultTypeMap,
+  CustomQueryType,
+} from './custom_query';
 import {AbsoluteEntryIndex, EntriesRange} from './index_types';
 import {TraceType} from './trace_type';
 
@@ -23,6 +28,10 @@ export interface Parser<T> {
   getLengthEntries(): number;
   getTimestamps(type: TimestampType): Timestamp[] | undefined;
   getEntry(index: AbsoluteEntryIndex, timestampType: TimestampType): Promise<T>;
-  getPartialProtos(entriesRange: EntriesRange, fieldPath: string): Promise<object[]>;
+  customQuery<Q extends CustomQueryType>(
+    type: Q,
+    entriesRange: EntriesRange,
+    param?: CustomQueryParamTypeMap[Q]
+  ): Promise<CustomQueryParserResultTypeMap[Q]>;
   getDescriptors(): string[];
 }

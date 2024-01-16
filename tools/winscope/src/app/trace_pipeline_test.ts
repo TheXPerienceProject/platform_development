@@ -16,8 +16,8 @@
 
 import {assertDefined} from 'common/assert_utils';
 import {FileUtils} from 'common/file_utils';
-import {UserNotificationListenerStub} from 'interfaces/user_notification_listener_stub';
-import {ParserError, ParserErrorType} from 'parsers/parser_factory';
+import {ProgressListenerStub} from 'messaging/progress_listener_stub';
+import {WinscopeError, WinscopeErrorType} from 'messaging/winscope_error';
 import {TracesUtils} from 'test/unit/traces_utils';
 import {UnitTestUtils} from 'test/unit/utils';
 import {TraceType} from 'trace/trace_type';
@@ -27,8 +27,8 @@ import {TracePipeline} from './trace_pipeline';
 describe('TracePipeline', () => {
   let validSfFile: File;
   let validWmFile: File;
-  let userNotificationListener: UserNotificationListenerStub;
-  let parserErrorsSpy: jasmine.Spy<(errors: ParserError[]) => void>;
+  let errors: WinscopeError[];
+  let progressListener: ProgressListenerStub;
   let tracePipeline: TracePipeline;
 
   beforeEach(async () => {
@@ -38,19 +38,23 @@ describe('TracePipeline', () => {
     validWmFile = await UnitTestUtils.getFixtureFile(
       'traces/elapsed_and_real_timestamp/WindowManager.pb'
     );
-    userNotificationListener = new UserNotificationListenerStub();
-    parserErrorsSpy = spyOn(userNotificationListener, 'onParserErrors');
-    tracePipeline = new TracePipeline(userNotificationListener);
+
+    errors = [];
+
+    progressListener = new ProgressListenerStub();
+    spyOn(progressListener, 'onProgressUpdate');
+    spyOn(progressListener, 'onOperationFinished');
+
+    tracePipeline = new TracePipeline();
   });
 
   it('can load valid trace files', async () => {
     expect(tracePipeline.getTraces().getSize()).toEqual(0);
 
-    await loadValidSfWmTraces();
+    await loadFiles([validSfFile, validWmFile], FilesSource.TEST);
+    await expectLoadResult(2, []);
 
-    expect(tracePipeline.getDownloadArchiveFilename()).toMatch(
-      new RegExp(`${FilesSource.UNKNOWN}_`)
-    );
+    expect(tracePipeline.getDownloadArchiveFilename()).toMatch(new RegExp(`${FilesSource.TEST}_`));
     expect(tracePipeline.getTraces().getSize()).toEqual(2);
 
     const traceEntries = await TracesUtils.extractEntries(tracePipeline.getTraces());
@@ -59,33 +63,30 @@ describe('TracePipeline', () => {
   });
 
   it('can set download archive filename based on files source', async () => {
-    await tracePipeline.loadFiles([validSfFile]);
-    expect(tracePipeline.getTraces().getSize()).toEqual(1);
+    await loadFiles([validSfFile]);
+    await expectLoadResult(1, []);
     expect(tracePipeline.getDownloadArchiveFilename()).toMatch(new RegExp('SurfaceFlinger_'));
 
     tracePipeline.clear();
 
-    await tracePipeline.loadFiles([validSfFile, validWmFile], undefined, FilesSource.COLLECTED);
-    expect(tracePipeline.getTraces().getSize()).toEqual(2);
+    await loadFiles([validSfFile, validWmFile], FilesSource.COLLECTED);
+    await expectLoadResult(2, []);
     expect(tracePipeline.getDownloadArchiveFilename()).toMatch(
       new RegExp(`${FilesSource.COLLECTED}_`)
     );
   });
 
-  it('can load a new file without dropping already-loaded traces', async () => {
-    expect(tracePipeline.getTraces().getSize()).toEqual(0);
-
-    await tracePipeline.loadFiles([validSfFile]);
-    expect(tracePipeline.getTraces().getSize()).toEqual(1);
-
-    await tracePipeline.loadFiles([validWmFile]);
-    expect(tracePipeline.getTraces().getSize()).toEqual(2);
-
-    await tracePipeline.loadFiles([validWmFile]); // ignored (duplicated)
-    expect(tracePipeline.getTraces().getSize()).toEqual(2);
+  it('can convert illegal uploaded archive filename to legal name for download archive', async () => {
+    const fileWithIllegalName = await UnitTestUtils.getFixtureFile(
+      'traces/SF_trace&(*_with:_illegal+_characters.pb'
+    );
+    await loadFiles([fileWithIllegalName]);
+    await expectLoadResult(1, []);
+    const downloadFilename = tracePipeline.getDownloadArchiveFilename();
+    expect(FileUtils.DOWNLOAD_FILENAME_REGEX.test(downloadFilename)).toBeTrue();
   });
 
-  it('can load bugreport and ignores non-trace dirs', async () => {
+  it('detects bugreports and filters out files based on their directory', async () => {
     expect(tracePipeline.getTraces().getSize()).toEqual(0);
 
     const bugreportFiles = [
@@ -99,16 +100,8 @@ describe('TracePipeline', () => {
         'FS/data/misc/wmtrace/surface_flinger.bp'
       ),
       await UnitTestUtils.getFixtureFile(
-        'traces/elapsed_and_real_timestamp/Transactions.pb',
-        'FS/data/misc/wmtrace/transactions.bp'
-      ),
-      await UnitTestUtils.getFixtureFile(
-        'traces/elapsed_and_real_timestamp/WindowManager.pb',
-        'proto/window_CRITICAL.proto'
-      ),
-      await UnitTestUtils.getFixtureFile(
         'traces/elapsed_and_real_timestamp/wm_transition_trace.pb',
-        'FS/data/misc/ignored-dir/wm_transition_trace.bp'
+        'FS/data/misc/ignored-dir/window_manager.bp'
       ),
     ];
 
@@ -128,58 +121,34 @@ describe('TracePipeline', () => {
       'would-be-ignored-if-was-in-bugreport-archive/input_method_clients.pb'
     );
 
-    await tracePipeline.loadFiles([bugreportArchive, otherFile]);
-    expect(parserErrorsSpy).not.toHaveBeenCalled();
+    await loadFiles([bugreportArchive, otherFile]);
+    await expectLoadResult(2, []);
 
-    await tracePipeline.buildTraces();
     const traces = tracePipeline.getTraces();
-
     expect(traces.getTrace(TraceType.SURFACE_FLINGER)).toBeDefined();
-    expect(traces.getTrace(TraceType.TRANSACTIONS)).toBeDefined();
-    expect(traces.getTrace(TraceType.WM_TRANSITION)).toBeUndefined(); // ignored
+    expect(traces.getTrace(TraceType.WINDOW_MANAGER)).toBeUndefined(); // ignored
     expect(traces.getTrace(TraceType.INPUT_METHOD_CLIENTS)).toBeDefined();
-    expect(traces.getTrace(TraceType.WINDOW_MANAGER)).toBeDefined();
-  });
-
-  it('prioritizes perfetto traces over legacy traces', async () => {
-    const files = [
-      await UnitTestUtils.getFixtureFile('traces/elapsed_and_real_timestamp/Transactions.pb'),
-      await UnitTestUtils.getFixtureFile('traces/perfetto/transactions_trace.perfetto-trace'),
-    ];
-
-    await tracePipeline.loadFiles(files);
-    await tracePipeline.buildTraces();
-    const traces = tracePipeline.getTraces();
-
-    expect(traces.getSize()).toEqual(1);
-    expect(assertDefined(traces.getTrace(TraceType.TRANSACTIONS)).getDescriptors()).toEqual([
-      'transactions_trace.perfetto-trace',
-    ]);
   });
 
   it('is robust to corrupted archive', async () => {
     const corruptedArchive = await UnitTestUtils.getFixtureFile('corrupted_archive.zip');
 
-    await tracePipeline.loadFiles([corruptedArchive]);
-    expect(parserErrorsSpy).toHaveBeenCalledOnceWith([
-      new ParserError(ParserErrorType.CORRUPTED_ARCHIVE, 'corrupted_archive.zip'),
-      new ParserError(ParserErrorType.NO_INPUT_FILES),
-    ]);
+    await loadFiles([corruptedArchive]);
 
-    await tracePipeline.buildTraces();
-    expect(tracePipeline.getTraces().getSize()).toEqual(0);
+    await expectLoadResult(0, [
+      new WinscopeError(WinscopeErrorType.CORRUPTED_ARCHIVE, 'corrupted_archive.zip'),
+      new WinscopeError(WinscopeErrorType.NO_INPUT_FILES),
+    ]);
   });
 
   it('is robust to invalid trace files', async () => {
     const invalidFiles = [await UnitTestUtils.getFixtureFile('winscope_homepage.png')];
 
-    await tracePipeline.loadFiles(invalidFiles);
-    expect(parserErrorsSpy).toHaveBeenCalledOnceWith([
-      new ParserError(ParserErrorType.UNSUPPORTED_FORMAT, 'winscope_homepage.png'),
-    ]);
+    await loadFiles(invalidFiles);
 
-    await tracePipeline.buildTraces();
-    expect(tracePipeline.getTraces().getSize()).toEqual(0);
+    await expectLoadResult(0, [
+      new WinscopeError(WinscopeErrorType.UNSUPPORTED_FILE_FORMAT, 'winscope_homepage.png'),
+    ]);
   });
 
   it('is robust to mixed valid and invalid trace files', async () => {
@@ -189,70 +158,32 @@ describe('TracePipeline', () => {
       await UnitTestUtils.getFixtureFile('traces/dump_WindowManager.pb'),
     ];
 
-    await tracePipeline.loadFiles(files);
-    expect(parserErrorsSpy).toHaveBeenCalledOnceWith([
-      new ParserError(ParserErrorType.UNSUPPORTED_FORMAT, 'winscope_homepage.png'),
+    await loadFiles(files);
+
+    await expectLoadResult(1, [
+      new WinscopeError(WinscopeErrorType.UNSUPPORTED_FILE_FORMAT, 'winscope_homepage.png'),
     ]);
-
-    await tracePipeline.buildTraces();
-    expect(tracePipeline.getTraces().getSize()).toEqual(1);
-  });
-
-  it('is robust to trace files with no entries', async () => {
-    const traceFilesWithNoEntries = [
-      await UnitTestUtils.getFixtureFile('traces/no_entries_InputMethodClients.pb'),
-    ];
-
-    await tracePipeline.loadFiles(traceFilesWithNoEntries);
-    expect(parserErrorsSpy).not.toHaveBeenCalled();
-
-    await tracePipeline.buildTraces();
-    expect(tracePipeline.getTraces().getSize()).toEqual(1);
-  });
-
-  it('is robust to multiple files of same trace type', async () => {
-    const filesOfSameTraceType = [
-      await UnitTestUtils.getFixtureFile(
-        'traces/elapsed_and_real_timestamp/SurfaceFlinger.pb',
-        'file0.pb'
-      ),
-      await UnitTestUtils.getFixtureFile(
-        'traces/elapsed_and_real_timestamp/SurfaceFlinger.pb',
-        'file1.pb'
-      ),
-    ];
-
-    // Expect one trace to be overridden/discarded
-    await tracePipeline.loadFiles(filesOfSameTraceType);
-    expect(parserErrorsSpy).toHaveBeenCalledOnceWith([
-      new ParserError(ParserErrorType.OVERRIDE, 'file1.pb', TraceType.SURFACE_FLINGER),
-    ]);
-
-    await tracePipeline.buildTraces();
-    expect(tracePipeline.getTraces().getSize()).toEqual(1);
   });
 
   it('can remove traces', async () => {
-    await loadValidSfWmTraces();
-    expect(tracePipeline.getTraces().getSize()).toEqual(2);
+    await loadFiles([validSfFile, validWmFile]);
+    await expectLoadResult(2, []);
 
     const sfTrace = assertDefined(tracePipeline.getTraces().getTrace(TraceType.SURFACE_FLINGER));
     const wmTrace = assertDefined(tracePipeline.getTraces().getTrace(TraceType.WINDOW_MANAGER));
 
     tracePipeline.removeTrace(sfTrace);
-    await tracePipeline.buildTraces();
-    expect(tracePipeline.getTraces().getSize()).toEqual(1);
+    await expectLoadResult(1, []);
 
     tracePipeline.removeTrace(wmTrace);
-    await tracePipeline.buildTraces();
-    expect(tracePipeline.getTraces().getSize()).toEqual(0);
+    await expectLoadResult(0, []);
   });
 
   it('gets loaded traces', async () => {
-    await loadValidSfWmTraces();
+    await loadFiles([validSfFile, validWmFile]);
+    await expectLoadResult(2, []);
 
     const traces = tracePipeline.getTraces();
-    expect(traces.getSize()).toEqual(2);
 
     const actualTraceTypes = new Set(traces.mapTrace((trace) => trace.type));
     const expectedTraceTypes = new Set([TraceType.SURFACE_FLINGER, TraceType.WINDOW_MANAGER]);
@@ -262,26 +193,28 @@ describe('TracePipeline', () => {
     expect(sfTrace.getDescriptors().length).toBeGreaterThan(0);
   });
 
-  it('builds traces', async () => {
-    await loadValidSfWmTraces();
-    const traces = tracePipeline.getTraces();
-
-    expect(traces.getTrace(TraceType.SURFACE_FLINGER)).toBeDefined();
-    expect(traces.getTrace(TraceType.WINDOW_MANAGER)).toBeDefined();
-  });
-
   it('gets screenrecording data', async () => {
     const files = [
       await UnitTestUtils.getFixtureFile(
         'traces/elapsed_and_real_timestamp/screen_recording_metadata_v2.mp4'
       ),
     ];
-    await tracePipeline.loadFiles(files);
-    await tracePipeline.buildTraces();
+    await loadFiles(files);
+    await expectLoadResult(1, []);
 
     const video = await tracePipeline.getScreenRecordingVideo();
     expect(video).toBeDefined();
-    expect(video!.size).toBeGreaterThan(0);
+    expect(video?.size).toBeGreaterThan(0);
+  });
+
+  it('creates traces with correct type', async () => {
+    await loadFiles([validSfFile, validWmFile]);
+    await expectLoadResult(2, []);
+
+    const traces = tracePipeline.getTraces();
+    traces.forEachTrace((trace, type) => {
+      expect(trace.type).toEqual(type);
+    });
   });
 
   it('creates zip archive with loaded trace files', async () => {
@@ -291,7 +224,9 @@ describe('TracePipeline', () => {
       ),
       await UnitTestUtils.getFixtureFile('traces/perfetto/transactions_trace.perfetto-trace'),
     ];
-    await tracePipeline.loadFiles(files);
+    await loadFiles(files);
+    await expectLoadResult(2, []);
+
     const archiveBlob = await tracePipeline.makeZipArchiveWithLoadedTraceFiles();
     const actualFiles = await FileUtils.unzipFile(archiveBlob);
     const actualFilenames = actualFiles
@@ -309,17 +244,26 @@ describe('TracePipeline', () => {
   });
 
   it('can be cleared', async () => {
-    await loadValidSfWmTraces();
-    expect(tracePipeline.getTraces().getSize()).toBeGreaterThan(0);
+    await loadFiles([validSfFile, validWmFile]);
+    await expectLoadResult(2, []);
 
     tracePipeline.clear();
     expect(tracePipeline.getTraces().getSize()).toEqual(0);
   });
 
-  async function loadValidSfWmTraces() {
-    const files = [validSfFile, validWmFile];
-    await tracePipeline.loadFiles(files);
-    expect(parserErrorsSpy).not.toHaveBeenCalled();
+  async function loadFiles(files: File[], source: FilesSource = FilesSource.TEST) {
+    const errorListener = {
+      onError(error: WinscopeError) {
+        errors.push(error);
+      },
+    };
+    await tracePipeline.loadFiles(files, source, errorListener, progressListener);
+    expect(progressListener.onOperationFinished).toHaveBeenCalled();
     await tracePipeline.buildTraces();
+  }
+
+  async function expectLoadResult(numberOfTraces: number, expectedErrors: WinscopeError[]) {
+    expect(errors).toEqual(expectedErrors);
+    expect(tracePipeline.getTraces().getSize()).toEqual(numberOfTraces);
   }
 });

@@ -15,8 +15,8 @@
  */
 
 import {ArrayUtils} from 'common/array_utils';
+import intDefMapping from 'common/intDefMapping.json';
 import {PropertiesDump} from 'viewers/common/ui_tree_utils';
-import intDefMapping from '../../../../../prebuilts/misc/common/winscope/intDefMapping.json';
 import {
   toActiveBuffer,
   toColor,
@@ -176,6 +176,8 @@ export class ObjectFormatter {
       case `ColorProto`:
         return toColor(obj);
       case `Long`:
+        return obj?.toString();
+      case `BigInt`:
         return obj?.toString();
       case `PointProto`:
         return toPoint(obj);
