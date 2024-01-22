@@ -26,6 +26,7 @@ import {UiData} from './ui_data';
       <rects-view
         class="rects-view"
         title="Windows"
+        [store]="store"
         [rects]="inputData?.rects ?? []"
         [displayIds]="inputData?.displayIds ?? []"
         [highlightedItem]="inputData?.highlightedItem ?? ''"></rects-view>
@@ -44,6 +45,7 @@ import {UiData} from './ui_data';
         [userOptions]="inputData?.propertiesUserOptions ?? {}"
         [propertiesTree]="inputData?.propertiesTree ?? {}"
         [highlightedProperty]="inputData?.highlightedProperty ?? ''"
+        [store]="store"
         [isProtoDump]="true"></properties-view>
     </div>
   `,

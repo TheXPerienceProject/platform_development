@@ -20,21 +20,25 @@ import {nodeInnerItemStyles} from 'viewers/components/styles/node.styles';
 @Component({
   selector: 'tree-node',
   template: `
-    <button *ngIf="showChevron()" class="icon-button toggle-tree-btn" (click)="toggleTree($event)">
-      <mat-icon>
-        {{ isCollapsed ? 'arrow_drop_down' : 'chevron_right' }}
-      </mat-icon>
-    </button>
+    <div *ngIf="showChevron()" class="icon-wrapper">
+      <button class="icon-button toggle-tree-btn" (click)="toggleTree($event)">
+        <mat-icon>
+          {{ isExpanded ? 'arrow_drop_down' : 'chevron_right' }}
+        </mat-icon>
+      </button>
+    </div>
 
-    <div *ngIf="showLeafNodeIcon()" class="leaf-node-icon-wrapper">
+    <div *ngIf="showLeafNodeIcon()" class="icon-wrapper leaf-node-icon-wrapper">
       <mat-icon class="leaf-node-icon"></mat-icon>
     </div>
 
-    <button *ngIf="showPinNodeIcon()" class="icon-button pin-node-btn" (click)="pinNode($event)">
-      <mat-icon>
-        {{ isPinned ? 'star' : 'star_border' }}
-      </mat-icon>
-    </button>
+    <div *ngIf="showPinNodeIcon()" class="icon-wrapper">
+      <button class="icon-button pin-node-btn" (click)="pinNode($event)">
+        <mat-icon>
+          {{ isPinned ? 'star' : 'star_border' }}
+        </mat-icon>
+      </button>
+    </div>
 
     <div class="description">
       <tree-node-data-view *ngIf="!isPropertiesTreeNode()" [item]="item"></tree-node-data-view>
@@ -43,13 +47,14 @@ import {nodeInnerItemStyles} from 'viewers/components/styles/node.styles';
         [item]="item"></tree-node-properties-data-view>
     </div>
 
-    <button
-      *ngIf="hasChildren && !isCollapsed"
-      class="icon-button expand-tree-btn"
-      [class]="collapseDiffClass"
-      (click)="expandTree($event)">
-      <mat-icon aria-hidden="true"> more_horiz </mat-icon>
-    </button>
+    <div *ngIf="hasChildren && !isExpanded" class="icon-wrapper">
+      <button
+        class="icon-button expand-tree-btn"
+        [class]="collapseDiffClass"
+        (click)="expandTree($event)">
+        <mat-icon aria-hidden="true"> more_horiz </mat-icon>
+      </button>
+    </div>
   `,
   styles: [nodeInnerItemStyles],
 })
@@ -57,11 +62,10 @@ export class TreeNodeComponent {
   @Input() item!: UiTreeNode;
   @Input() isLeaf?: boolean;
   @Input() flattened?: boolean;
-  @Input() isCollapsed?: boolean;
+  @Input() isExpanded?: boolean;
   @Input() hasChildren?: boolean = false;
   @Input() isPinned?: boolean = false;
   @Input() isInPinnedSection?: boolean = false;
-  @Input() isAlwaysCollapsed?: boolean;
   @Input() isSelected?: boolean = false;
 
   @Output() toggleTreeChange = new EventEmitter<void>();
@@ -103,10 +107,8 @@ export class TreeNodeComponent {
   }
 
   toggleTree(event: MouseEvent) {
-    if (!this.isAlwaysCollapsed) {
-      event.stopPropagation();
-      this.toggleTreeChange.emit();
-    }
+    event.stopPropagation();
+    this.toggleTreeChange.emit();
   }
 
   showChevron() {
@@ -128,7 +130,7 @@ export class TreeNodeComponent {
   }
 
   updateCollapseDiffClass() {
-    if (this.isCollapsed) {
+    if (this.isExpanded) {
       return '';
     }
 
