@@ -27,6 +27,7 @@ import {UiData} from './ui_data';
       <rects-view
         class="rects-view"
         title="Layers"
+        [store]="store"
         [rects]="inputData?.rects ?? []"
         [highlightedItem]="inputData?.highlightedItem ?? ''"
         [displayIds]="inputData?.displayIds ?? []"></rects-view>
@@ -47,6 +48,7 @@ import {UiData} from './ui_data';
         [highlightedProperty]="inputData?.highlightedProperty ?? ''"
         [selectedItem]="inputData?.selectedLayer ?? {}"
         [traceType]="${TraceType.SURFACE_FLINGER}"
+        [store]="store"
         [displayPropertyGroups]="inputData?.displayPropertyGroups"
         [isProtoDump]="true"></properties-view>
     </div>
