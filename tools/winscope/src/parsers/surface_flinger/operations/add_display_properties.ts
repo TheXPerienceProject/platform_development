@@ -14,18 +14,19 @@
  * limitations under the License.
  */
 
-import {assertDefined} from 'common/assert_utils';
+import {assertDefined, assertTrue} from 'common/assert_utils';
+import {DisplayLayerStack} from 'trace/display_layer_stack';
 import {Operation} from 'trace/tree_node/operations/operation';
 import {PropertyTreeNode} from 'trace/tree_node/property_tree_node';
 import {PropertyTreeNodeFactory} from 'trace/tree_node/property_tree_node_factory';
 
 export class AddDisplayProperties implements Operation<PropertyTreeNode> {
-  apply(value: PropertyTreeNode): PropertyTreeNode {
+  apply(value: PropertyTreeNode): void {
     const factory = new PropertyTreeNodeFactory();
 
     const displays = value.getChildByName('displays');
 
-    if (!displays) return value;
+    if (!displays) return;
 
     for (const display of displays.getAllChildren()) {
       const dpiX = display.getChildByName('dpiX');
@@ -46,18 +47,21 @@ export class AddDisplayProperties implements Operation<PropertyTreeNode> {
         )
       );
 
-      const layerStack = assertDefined(display.getChildByName('layerStack'));
+      const layerStack = assertDefined(display.getChildByName('layerStack')).getValue();
+
+      assertTrue(
+        layerStack !== -1,
+        () => 'layerStack = -1; false assumption that layerStack is always unsigned'
+      );
 
       display.addChild(
         factory.makeCalculatedProperty(
           display.id,
           'isOn',
-          layerStack.getValue() !== AddDisplayProperties.BLANK_LAYER_STACK
+          layerStack !== DisplayLayerStack.INVALID_LAYER_STACK
         )
       );
     }
-
-    return value;
   }
 
   private dpiFromPx(size: number, densityDpi: number): number {
@@ -67,5 +71,4 @@ export class AddDisplayProperties implements Operation<PropertyTreeNode> {
 
   private static readonly TABLET_MIN_DPS = 600;
   private static readonly DENSITY_DEFAULT = 160;
-  private static readonly BLANK_LAYER_STACK = -1;
 }
