@@ -32,13 +32,12 @@ class Mapper3D {
   private static readonly ZOOM_FACTOR_STEP = 0.2;
 
   private rects: UiRect[] = [];
-  private highlightedRectId: string = '';
+  private highlightedRectId = '';
   private cameraRotationFactor = Mapper3D.CAMERA_ROTATION_FACTOR_INIT;
   private zSpacingFactor = Mapper3D.Z_SPACING_FACTOR_INIT;
   private zoomFactor = Mapper3D.ZOOM_FACTOR_INIT;
-  private panScreenDistance: Distance2D = new Distance2D(0, 0);
+  private panScreenDistance = new Distance2D(0, 0);
   private showOnlyVisibleMode = false; // by default show all
-  private showVirtualMode = false; // by default don't show virtual displays
   private currentGroupId = 0; // default stack id is usually 0
 
   setRects(rects: UiRect[]) {
@@ -65,12 +64,12 @@ class Mapper3D {
     this.zSpacingFactor = Math.min(Math.max(factor, 0), 1);
   }
 
-  increaseZoomFactor(times: number = 1) {
+  increaseZoomFactor(times = 1) {
     this.zoomFactor += Mapper3D.ZOOM_FACTOR_STEP * times;
     this.zoomFactor = Math.min(this.zoomFactor, Mapper3D.ZOOM_FACTOR_MAX);
   }
 
-  decreaseZoomFactor(times: number = 1) {
+  decreaseZoomFactor(times = 1) {
     this.zoomFactor -= Mapper3D.ZOOM_FACTOR_STEP * times;
     this.zoomFactor = Math.max(this.zoomFactor, Mapper3D.ZOOM_FACTOR_MIN);
   }
@@ -96,14 +95,6 @@ class Mapper3D {
     this.showOnlyVisibleMode = enabled;
   }
 
-  getShowVirtualMode(): boolean {
-    return this.showVirtualMode;
-  }
-
-  setShowVirtualMode(enabled: boolean) {
-    this.showVirtualMode = enabled;
-  }
-
   getCurrentGroupId(): number {
     return this.currentGroupId;
   }
@@ -112,8 +103,13 @@ class Mapper3D {
     this.currentGroupId = id;
   }
 
+  private compareDepth(a: UiRect, b: UiRect): number {
+    return a.depth > b.depth ? -1 : 1;
+  }
+
   computeScene(): Scene3D {
     const rects2d = this.selectRectsToDraw(this.rects);
+    rects2d.sort(this.compareDepth);
     const rects3d = this.computeRects(rects2d);
     const labels3d = this.computeLabels(rects2d, rects3d);
     const boundingBox = this.computeBoundingBox(rects3d, labels3d);
@@ -137,10 +133,6 @@ class Mapper3D {
 
     if (this.showOnlyVisibleMode) {
       rects = rects.filter((rect) => rect.isVisible || rect.isDisplay);
-    }
-
-    if (!this.showVirtualMode) {
-      rects = rects.filter((rect) => !rect.isVirtual);
     }
 
     return rects;
@@ -175,13 +167,9 @@ class Mapper3D {
 
     let z = 0;
     const rects3d = rects2d.map((rect2d): Rect3D => {
-      if (rect2d.depth !== undefined) {
-        z =
-          this.zSpacingFactor *
-          (Mapper3D.Z_SPACING_MAX * rect2d.depth + computeAntiZFightingOffset(rect2d.depth));
-      } else {
-        z -= Mapper3D.Z_SPACING_MAX * this.zSpacingFactor;
-      }
+      z =
+        this.zSpacingFactor *
+        (Mapper3D.Z_SPACING_MAX * rect2d.depth + computeAntiZFightingOffset(rect2d.depth));
 
       const darkFactor = rect2d.isVisible
         ? (visibleRectsTotal - visibleRectsSoFar++) / visibleRectsTotal
@@ -214,7 +202,7 @@ class Mapper3D {
 
   private getColorType(rect2d: UiRect): ColorType {
     let colorType: ColorType;
-    if (this.highlightedRectId === rect2d.id) {
+    if (this.highlightedRectId === rect2d.id && rect2d.isClickable) {
       colorType = ColorType.HIGHLIGHTED;
     } else if (rect2d.hasContent === true) {
       colorType = ColorType.HAS_CONTENT;
@@ -314,7 +302,7 @@ class Mapper3D {
         z: lineStart.z,
       };
 
-      const isHighlighted = this.highlightedRectId === rect2d.id;
+      const isHighlighted = rect2d.isClickable && this.highlightedRectId === rect2d.id;
 
       const label3d: Label3D = {
         circle: {

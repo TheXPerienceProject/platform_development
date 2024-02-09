@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-import {WindowManagerState} from 'flickerlib/windows/WindowManagerState';
 import {TracesUtils} from 'test/unit/traces_utils';
 import {TraceBuilder} from 'test/unit/trace_builder';
 import {RealTimestamp} from '../common/time';
@@ -44,7 +43,7 @@ describe('FrameMapper', () => {
 
   describe('ProtoLog <-> WindowManager', () => {
     let protoLog: Trace<LogMessage>;
-    let windowManager: Trace<WindowManagerState>;
+    let windowManager: Trace<HierarchyTreeNode>;
     let traces: Traces;
 
     beforeAll(async () => {
@@ -65,10 +64,10 @@ describe('FrameMapper', () => {
         .setTimestamps([time0, time1, time2, time4, time5, time6])
         .build();
 
-      windowManager = new TraceBuilder<WindowManagerState>()
+      windowManager = new TraceBuilder<HierarchyTreeNode>()
         .setEntries([
-          'entry-0' as unknown as WindowManagerState,
-          'entry-1' as unknown as WindowManagerState,
+          'entry-0' as unknown as HierarchyTreeNode,
+          'entry-1' as unknown as HierarchyTreeNode,
         ])
         .setTimestamps([time3, time5])
         .build();
@@ -101,8 +100,8 @@ describe('FrameMapper', () => {
   });
 
   describe('IME <-> WindowManager', () => {
-    let ime: Trace<object>;
-    let windowManager: Trace<WindowManagerState>;
+    let ime: Trace<HierarchyTreeNode>;
+    let windowManager: Trace<HierarchyTreeNode>;
     let traces: Traces;
 
     beforeAll(async () => {
@@ -110,21 +109,21 @@ describe('FrameMapper', () => {
       //                    |        |
       // WINDOW_MANAGER:    0        1  2
       // Time:           0  1  2  3  4  5
-      ime = new TraceBuilder<object>()
+      ime = new TraceBuilder<HierarchyTreeNode>()
         .setEntries([
-          'entry-0' as unknown as object,
-          'entry-1' as unknown as object,
-          'entry-2' as unknown as object,
-          'entry-3' as unknown as object,
+          'entry-0' as unknown as HierarchyTreeNode,
+          'entry-1' as unknown as HierarchyTreeNode,
+          'entry-2' as unknown as HierarchyTreeNode,
+          'entry-3' as unknown as HierarchyTreeNode,
         ])
         .setTimestamps([time0, time1, time2, time4])
         .build();
 
-      windowManager = new TraceBuilder<WindowManagerState>()
+      windowManager = new TraceBuilder<HierarchyTreeNode>()
         .setEntries([
-          'entry-0' as unknown as WindowManagerState,
-          'entry-1' as unknown as WindowManagerState,
-          'entry-2' as unknown as WindowManagerState,
+          'entry-0' as unknown as HierarchyTreeNode,
+          'entry-1' as unknown as HierarchyTreeNode,
+          'entry-2' as unknown as HierarchyTreeNode,
         ])
         .setTimestamps([time1, time4, time5])
         .build();
@@ -164,7 +163,7 @@ describe('FrameMapper', () => {
   });
 
   describe('WindowManager <-> Transactions', () => {
-    let windowManager: Trace<WindowManagerState>;
+    let windowManager: Trace<HierarchyTreeNode>;
     let transactions: Trace<object>;
     let traces: Traces;
 
@@ -175,12 +174,12 @@ describe('FrameMapper', () => {
       //                  |  |   |    |     |      |
       // Frames:          0  1   2    3     4  ... 5
       // Time:            0  1  2  3  4  5  6  ... 10s
-      windowManager = new TraceBuilder<LogMessage>()
+      windowManager = new TraceBuilder<HierarchyTreeNode>()
         .setEntries([
-          'entry-0' as unknown as WindowManagerState,
-          'entry-1' as unknown as WindowManagerState,
-          'entry-2' as unknown as WindowManagerState,
-          'entry-3' as unknown as WindowManagerState,
+          'entry-0' as unknown as HierarchyTreeNode,
+          'entry-1' as unknown as HierarchyTreeNode,
+          'entry-2' as unknown as HierarchyTreeNode,
+          'entry-3' as unknown as HierarchyTreeNode,
         ])
         .setTimestamps([time1, time2, time4, time5])
         .build();

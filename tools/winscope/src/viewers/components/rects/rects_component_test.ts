@@ -101,6 +101,7 @@ describe('RectsComponent', () => {
       .setIsVirtual(false)
       .setIsClickable(false)
       .setCornerRadius(0)
+      .setDepth(0)
       .build();
 
     expect(Canvas.prototype.draw).toHaveBeenCalledTimes(0);
@@ -344,10 +345,6 @@ describe('RectsComponent', () => {
     fixture.detectChanges();
     expect(component.rectsComponent.getZSpacingFactor()).toEqual(0.06);
 
-    expect(component.rectsComponent.getShowVirtualMode()).toBeFalse();
-    findAndClickCheckbox('.top-view-controls .show-virtual input');
-    expect(component.rectsComponent.getShowVirtualMode()).toBeTrue();
-
     expect(component.rectsComponent.getShowOnlyVisibleMode()).toBeFalse();
     findAndClickCheckbox('.top-view-controls .show-only-visible  input');
     expect(component.rectsComponent.getShowOnlyVisibleMode()).toBeTrue();
@@ -357,7 +354,6 @@ describe('RectsComponent', () => {
     newFixture.detectChanges();
 
     expect(newComponent.rectsComponent.getZSpacingFactor()).toEqual(0.06);
-    expect(newComponent.rectsComponent.getShowVirtualMode()).toBeTrue();
     expect(newComponent.rectsComponent.getShowOnlyVisibleMode()).toBeTrue();
   });
 

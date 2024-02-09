@@ -17,7 +17,6 @@
 import {assertDefined} from 'common/assert_utils';
 import {TimestampType} from 'common/time';
 import {UrlUtils} from 'common/url_utils';
-import {WindowManagerState} from 'flickerlib/common';
 import {ParserFactory} from 'parsers/parser_factory';
 import {ParserFactory as PerfettoParserFactory} from 'parsers/perfetto/parser_factory';
 import {TracesParserFactory} from 'parsers/traces_parser_factory';
@@ -111,7 +110,7 @@ class UnitTestUtils {
     return tracesParsers[0];
   }
 
-  static async getWindowManagerState(): Promise<WindowManagerState> {
+  static async getWindowManagerState(): Promise<HierarchyTreeNode> {
     return UnitTestUtils.getTraceEntry('traces/elapsed_timestamp/WindowManager.pb');
   }
 
@@ -121,8 +120,8 @@ class UnitTestUtils {
     );
   }
 
-  static async getViewCaptureEntry(): Promise<object> {
-    return await UnitTestUtils.getTraceEntry<object>(
+  static async getViewCaptureEntry(): Promise<HierarchyTreeNode> {
+    return await UnitTestUtils.getTraceEntry<HierarchyTreeNode>(
       'traces/elapsed_and_real_timestamp/com.google.android.apps.nexuslauncher_0.vc'
     );
   }
@@ -133,7 +132,7 @@ class UnitTestUtils {
     );
   }
 
-  static async getImeTraceEntries(): Promise<Map<TraceType, any>> {
+  static async getImeTraceEntries(): Promise<Map<TraceType, HierarchyTreeNode>> {
     let surfaceFlingerEntry: HierarchyTreeNode | undefined;
     {
       const parser = (await UnitTestUtils.getParser(
@@ -142,13 +141,15 @@ class UnitTestUtils {
       surfaceFlingerEntry = await parser.getEntry(5, TimestampType.ELAPSED);
     }
 
-    let windowManagerEntry: WindowManagerState | undefined;
+    let windowManagerEntry: HierarchyTreeNode | undefined;
     {
-      const parser = await UnitTestUtils.getParser('traces/ime/WindowManager_with_IME.pb');
+      const parser = (await UnitTestUtils.getParser(
+        'traces/ime/WindowManager_with_IME.pb'
+      )) as Parser<HierarchyTreeNode>;
       windowManagerEntry = await parser.getEntry(2, TimestampType.ELAPSED);
     }
 
-    const entries = new Map<TraceType, any>();
+    const entries = new Map<TraceType, HierarchyTreeNode>();
     entries.set(
       TraceType.INPUT_METHOD_CLIENTS,
       await UnitTestUtils.getTraceEntry('traces/ime/InputMethodClients.pb')

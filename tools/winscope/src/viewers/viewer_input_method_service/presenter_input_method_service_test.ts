@@ -20,12 +20,16 @@ import {PresenterInputMethodService} from './presenter_input_method_service';
 
 describe('PresenterInputMethodService', () => {
   describe('PresenterInputMethod tests:', () => {
-    const selectedTree = new HierarchyTreeBuilder().setId('service').setStableId('service').build();
+    const selectedTree = new HierarchyTreeBuilder()
+      .setId('InputMethodService')
+      .setName('entry')
+      .setProperties({where: 'location', elapsedNanos: 0})
+      .build();
 
     executePresenterInputMethodTests(
       selectedTree,
-      'visib',
-      [13, 3],
+      'elapsedNanos',
+      [2, 1],
       true,
       PresenterInputMethodService,
       TraceType.INPUT_METHOD_SERVICE

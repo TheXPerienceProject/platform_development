@@ -31,22 +31,23 @@ import {UiData} from './ui_data';
         [displays]="inputData?.displays ?? []"
         [highlightedItem]="inputData?.highlightedItem ?? ''"></rects-view>
       <mat-divider [vertical]="true"></mat-divider>
-      <hierarchy-view-legacy
+      <hierarchy-view
         class="hierarchy-view"
-        [tree]="inputData?.tree ?? null"
+        [tree]="inputData?.tree"
         [dependencies]="inputData?.dependencies ?? []"
         [highlightedItem]="inputData?.highlightedItem ?? ''"
         [pinnedItems]="inputData?.pinnedItems ?? []"
         [store]="store"
-        [userOptions]="inputData?.hierarchyUserOptions ?? {}"></hierarchy-view-legacy>
+        [userOptions]="inputData?.hierarchyUserOptions ?? {}"></hierarchy-view>
       <mat-divider [vertical]="true"></mat-divider>
-      <properties-view-legacy
+      <properties-view
         class="properties-view"
         [userOptions]="inputData?.propertiesUserOptions ?? {}"
-        [propertiesTree]="inputData?.propertiesTree ?? {}"
+        [propertiesTree]="inputData?.propertiesTree"
+        [traceType]="${TraceType.WINDOW_MANAGER}"
         [highlightedProperty]="inputData?.highlightedProperty ?? ''"
         [store]="store"
-        [isProtoDump]="true"></properties-view-legacy>
+        [isProtoDump]="true"></properties-view>
     </div>
   `,
   styles: [
@@ -64,8 +65,8 @@ import {UiData} from './ui_data';
   ],
 })
 export class ViewerWindowManagerComponent {
-  @Input() inputData?: UiData;
-  @Input() store: PersistentStore = new PersistentStore();
+  @Input() inputData: UiData | undefined;
+  @Input() store: PersistentStore | undefined;
   @Input() active = false;
   TRACE_INFO = TRACE_INFO;
   TraceType = TraceType;

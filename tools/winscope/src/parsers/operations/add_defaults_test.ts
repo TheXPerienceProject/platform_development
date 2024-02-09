@@ -15,25 +15,28 @@
  */
 
 import {assertDefined} from 'common/assert_utils';
-import {TamperedMessageType} from 'parsers/tampered_message_type';
+import {TamperedMessageType, TamperedProtoField} from 'parsers/tampered_message_type';
 import root from 'protos/test/fake_proto/json';
-import {TreeNodeUtils} from 'test/unit/tree_node_utils';
+import {PropertyTreeBuilder} from 'test/unit/property_tree_builder';
 import {PropertySource, PropertyTreeNode} from 'trace/tree_node/property_tree_node';
 import {AddDefaults} from './add_defaults';
 
 describe('AddDefaults', () => {
   let propertyRoot: PropertyTreeNode;
   let operation: AddDefaults;
-  let protoType: TamperedMessageType;
+  let rootField: TamperedProtoField;
 
   beforeEach(() => {
-    const rootField = TamperedMessageType.tamper(root.lookupType('RootMessage')).fields['entry'];
-    protoType = assertDefined(rootField.tamperedMessageType);
-    propertyRoot = new PropertyTreeNode('test node', 'node', PropertySource.PROTO, undefined);
+    rootField = TamperedMessageType.tamper(root.lookupType('RootMessage')).fields['entry'];
+    propertyRoot = new PropertyTreeBuilder()
+      .setIsRoot(true)
+      .setRootId('test')
+      .setName('node')
+      .build();
   });
 
   it('adds only defaults from allowlist', () => {
-    operation = new AddDefaults(protoType, ['number_32bit']);
+    operation = new AddDefaults(rootField, ['number_32bit']);
     operation.apply(propertyRoot);
     expect(propertyRoot.getAllChildren().length).toEqual(1);
     const defaultNode = assertDefined(propertyRoot.getChildByName('number_32bit'));
@@ -42,7 +45,7 @@ describe('AddDefaults', () => {
   });
 
   it('adds all defaults from prototype definition in absence of allowlist', () => {
-    operation = new AddDefaults(protoType);
+    operation = new AddDefaults(rootField);
     operation.apply(propertyRoot);
     expect(propertyRoot.getAllChildren().length).toEqual(11);
     checkAllNodesAreDefault(propertyRoot);
@@ -53,7 +56,7 @@ describe('AddDefaults', () => {
   });
 
   it('does not add defaults in denylist', () => {
-    operation = new AddDefaults(protoType, undefined, ['number_32bit', 'number_64bit']);
+    operation = new AddDefaults(rootField, undefined, ['number_32bit', 'number_64bit']);
     operation.apply(propertyRoot);
 
     expect(propertyRoot.getAllChildren().length).toEqual(9);
@@ -63,10 +66,13 @@ describe('AddDefaults', () => {
   });
 
   it('replaces undefined proto node with default node', () => {
-    operation = new AddDefaults(protoType, ['number_32bit']);
-    propertyRoot.addChild(
-      TreeNodeUtils.makePropertyNode(propertyRoot.id, 'number_32bit', undefined)
-    );
+    operation = new AddDefaults(rootField, ['number_32bit']);
+    propertyRoot = new PropertyTreeBuilder()
+      .setIsRoot(true)
+      .setRootId('test')
+      .setName('node')
+      .setChildren([{name: 'number_32bit', value: undefined}])
+      .build();
     operation.apply(propertyRoot);
 
     expect(propertyRoot.getAllChildren().length).toEqual(1);

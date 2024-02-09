@@ -29,7 +29,7 @@ import {nodeStyles} from 'viewers/components/styles/node.styles';
       <div class="title-filter">
         <h2 class="properties-title mat-title">Properties</h2>
 
-        <mat-form-field>
+        <mat-form-field (keydown.enter)="$event.target.blur()">
           <mat-label>Filter...</mat-label>
 
           <input matInput [(ngModel)]="filterString" (ngModelChange)="filterTree()" name="filter" />
@@ -131,7 +131,7 @@ export class PropertiesComponent {
 
   @Input() userOptions: UserOptions = {};
   @Input() propertiesTree: UiPropertyTreeNode | undefined;
-  @Input() highlightedProperty: string = '';
+  @Input() highlightedProperty = '';
   @Input() curatedProperties: CuratedProperties | undefined;
   @Input() displayPropertyGroups = false;
   @Input() isProtoDump = false;
@@ -141,7 +141,7 @@ export class PropertiesComponent {
   constructor(@Inject(ElementRef) private elementRef: ElementRef) {}
 
   filterTree() {
-    const event: CustomEvent = new CustomEvent(ViewerEvents.PropertiesFilterChange, {
+    const event = new CustomEvent(ViewerEvents.PropertiesFilterChange, {
       bubbles: true,
       detail: {filterString: this.filterString},
     });
@@ -149,7 +149,7 @@ export class PropertiesComponent {
   }
 
   onHighlightedPropertyChange(newId: string) {
-    const event: CustomEvent = new CustomEvent(ViewerEvents.HighlightedPropertyChange, {
+    const event = new CustomEvent(ViewerEvents.HighlightedPropertyChange, {
       bubbles: true,
       detail: {id: newId},
     });
@@ -157,7 +157,7 @@ export class PropertiesComponent {
   }
 
   updateTree() {
-    const event: CustomEvent = new CustomEvent(ViewerEvents.PropertiesUserOptionsChange, {
+    const event = new CustomEvent(ViewerEvents.PropertiesUserOptionsChange, {
       bubbles: true,
       detail: {userOptions: this.userOptions},
     });
@@ -173,7 +173,7 @@ export class PropertiesComponent {
       this.traceType === TraceType.VIEW_CAPTURE &&
       this.filterString === '' &&
       // Todo: Highlight Inline in formatted ViewCapture Properties Component.
-      this.userOptions['showDiff']?.enabled === false &&
+      !this.userOptions['showDiff']?.enabled &&
       this.curatedProperties !== undefined
     );
   }

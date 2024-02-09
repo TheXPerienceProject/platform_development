@@ -14,26 +14,25 @@
  * limitations under the License.
  */
 
-import {TamperedMessageType} from 'parsers/tampered_message_type';
+import {assertDefined} from 'common/assert_utils';
+import {TamperedMessageType, TamperedProtoField} from 'parsers/tampered_message_type';
 import {AddOperation} from 'trace/tree_node/operations/add_operation';
 import {PropertyTreeNode} from 'trace/tree_node/property_tree_node';
-import {PropertyTreeNodeFactory} from 'trace/tree_node/property_tree_node_factory';
+import {DEFAULT_PROPERTY_TREE_NODE_FACTORY} from 'trace/tree_node/property_tree_node_factory';
 
 export class AddDefaults extends AddOperation<PropertyTreeNode> {
+  private readonly protoType: TamperedMessageType;
   constructor(
-    private readonly protoType: TamperedMessageType,
+    protoField: TamperedProtoField,
     private readonly propertyAllowlist?: string[],
     private readonly propertyDenylist?: string[]
   ) {
     super();
+    this.protoType = assertDefined(protoField.tamperedMessageType);
   }
 
-  override makeProperties(
-    factory: PropertyTreeNodeFactory,
-    value: PropertyTreeNode
-  ): PropertyTreeNode[] {
+  override makeProperties(value: PropertyTreeNode): PropertyTreeNode[] {
     const defaultPropertyNodes: PropertyTreeNode[] = [];
-
     for (const fieldName in this.protoType.fields) {
       if (this.propertyAllowlist && !this.propertyAllowlist.includes(fieldName)) {
         continue;
@@ -98,22 +97,21 @@ export class AddDefaults extends AddOperation<PropertyTreeNode> {
       }
 
       if (
-        existingNode &&
-        (existingNode.getValue() === field.defaultValue ||
-          (existingNode.getValue() === undefined && existingNode.getAllChildren().length === 0))
+        !existingNode ||
+        existingNode.getValue() === field.defaultValue ||
+        (existingNode.getValue() === undefined && existingNode.getAllChildren().length === 0)
       ) {
-        value.removeChild(existingNode.id);
-        existingNode = undefined;
-      }
-
-      if (!existingNode) {
-        existingNode = factory.makeDefaultProperty(value.id, fieldName, defaultValue);
+        existingNode = DEFAULT_PROPERTY_TREE_NODE_FACTORY.makeDefaultProperty(
+          value.id,
+          fieldName,
+          defaultValue
+        );
         defaultPropertyNodes.push(existingNode);
         continue;
       }
 
       if (field.tamperedMessageType) {
-        const operation = new AddDefaults(field.tamperedMessageType);
+        const operation = new AddDefaults(field);
         if (field.repeated) {
           existingNode.getAllChildren().forEach((child) => operation.apply(child));
         } else {
