@@ -30,6 +30,7 @@ import {UiData} from './ui_data';
       <rects-view
         class="rects-view"
         title="View Hierarchy Sketch"
+        [store]="store"
         [enableShowVirtualButton]="false"
         [rects]="inputData?.rects ?? []"
         [zoomFactor]="4"
@@ -37,23 +38,24 @@ import {UiData} from './ui_data';
         [highlightedItem]="inputData?.highlightedItem ?? ''"
         [displayIds]="[0]"></rects-view>
       <mat-divider [vertical]="true"></mat-divider>
-      <hierarchy-view
+      <hierarchy-view-legacy
         class="hierarchy-view"
         [tree]="inputData?.tree ?? null"
         [dependencies]="inputData?.dependencies ?? []"
         [highlightedItem]="inputData?.highlightedItem ?? ''"
         [pinnedItems]="inputData?.pinnedItems ?? []"
         [store]="store"
-        [userOptions]="inputData?.hierarchyUserOptions ?? {}"></hierarchy-view>
+        [userOptions]="inputData?.hierarchyUserOptions ?? {}"></hierarchy-view-legacy>
       <mat-divider [vertical]="true"></mat-divider>
-      <properties-view
+      <properties-view-legacy
         class="properties-view"
         [userOptions]="inputData?.propertiesUserOptions ?? {}"
         [propertiesTree]="inputData?.propertiesTree ?? {}"
         [selectedItem]="inputData?.selectedViewNode ?? null"
         [traceType]="${TraceType.VIEW_CAPTURE}"
+        [store]="store"
         [isProtoDump]="false">
-      </properties-view>
+      </properties-view-legacy>
     </div>
   `,
   styles: [

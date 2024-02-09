@@ -14,29 +14,34 @@
  * limitations under the License.
  */
 import {CommonModule} from '@angular/common';
-import {CUSTOM_ELEMENTS_SCHEMA} from '@angular/core';
+import {Component, CUSTOM_ELEMENTS_SCHEMA, ViewChild} from '@angular/core';
 import {ComponentFixture, TestBed} from '@angular/core/testing';
 import {MatCheckboxModule} from '@angular/material/checkbox';
 import {MatDividerModule} from '@angular/material/divider';
 import {MatRadioModule} from '@angular/material/radio';
 import {MatSliderModule} from '@angular/material/slider';
+import {assertDefined} from 'common/assert_utils';
+import {PersistentStore} from 'common/persistent_store';
 import {RectsComponent} from 'viewers/components/rects/rects_component';
 import {UiRect} from 'viewers/components/rects/types2d';
 import {Canvas} from './canvas';
+import {UiRectBuilder} from './ui_rect_builder';
 
 describe('RectsComponent', () => {
-  let component: RectsComponent;
-  let fixture: ComponentFixture<RectsComponent>;
+  let component: TestHostComponent;
+  let fixture: ComponentFixture<TestHostComponent>;
   let htmlElement: HTMLElement;
 
   beforeEach(async () => {
+    localStorage.clear();
+
     await TestBed.configureTestingModule({
       imports: [CommonModule, MatCheckboxModule, MatDividerModule, MatSliderModule, MatRadioModule],
-      declarations: [RectsComponent],
+      declarations: [TestHostComponent, RectsComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
     }).compileComponents();
 
-    fixture = TestBed.createComponent(RectsComponent);
+    fixture = TestBed.createComponent(TestHostComponent);
     component = fixture.componentInstance;
     htmlElement = fixture.nativeElement;
     fixture.detectChanges();
@@ -64,33 +69,33 @@ describe('RectsComponent', () => {
   it('draws scene when input data changes', async () => {
     spyOn(Canvas.prototype, 'draw').and.callThrough();
 
-    const inputRect: UiRect = {
-      x: 0,
-      y: 0,
-      w: 1,
-      h: 1,
-      label: 'rectangle1',
-      transform: {
+    const inputRect = new UiRectBuilder()
+      .setX(0)
+      .setY(0)
+      .setWidth(1)
+      .setHeight(1)
+      .setLabel('rectangle1')
+      .setTransform({
         dsdx: 1,
         dsdy: 0,
         dtdx: 0,
         dtdy: 1,
         tx: 0,
         ty: 0,
-      },
-      isVisible: true,
-      isDisplay: false,
-      id: 'test-id-1234',
-      displayId: 0,
-      isVirtual: false,
-      isClickable: false,
-      cornerRadius: 0,
-    };
+      })
+      .setIsVisible(true)
+      .setIsDisplay(false)
+      .setId('test-id-1234')
+      .setDisplayId(0)
+      .setIsVirtual(false)
+      .setIsClickable(false)
+      .setCornerRadius(0)
+      .build();
 
     expect(Canvas.prototype.draw).toHaveBeenCalledTimes(0);
-    component.rects = [inputRect];
+    component.rectsComponent.rects = [inputRect];
     expect(Canvas.prototype.draw).toHaveBeenCalledTimes(1);
-    component.rects = [inputRect];
+    component.rectsComponent.rects = [inputRect];
     expect(Canvas.prototype.draw).toHaveBeenCalledTimes(2);
   });
 
@@ -119,13 +124,62 @@ describe('RectsComponent', () => {
 
     fixture.detectChanges();
 
-    const displayButtonContainer = htmlElement.querySelector('.display-button-container');
-    expect(displayButtonContainer).toBeTruthy();
+    const displayButtonContainer = assertDefined(
+      htmlElement.querySelector('.display-button-container')
+    );
 
-    const buttons = Array.from(displayButtonContainer?.querySelectorAll('button') ?? []);
+    const buttons = Array.from(assertDefined(displayButtonContainer.querySelectorAll('button')));
     expect(buttons.length).toBe(3);
 
     const buttonValues = buttons.map((it) => it.textContent?.trim());
     expect(buttonValues).toEqual(['0', '1', '2']);
   });
+
+  it('uses stored rects view settings', () => {
+    expect(component.rectsComponent.getZSpacingFactor()).toEqual(1);
+    component.rectsComponent.onSeparationSliderChange(0.06);
+    fixture.detectChanges();
+    expect(component.rectsComponent.getZSpacingFactor()).toEqual(0.06);
+
+    expect(component.rectsComponent.getShowVirtualMode()).toBeFalse();
+    findAndClickCheckbox('.top-view-controls .show-virtual input');
+    expect(component.rectsComponent.getShowVirtualMode()).toBeTrue();
+
+    expect(component.rectsComponent.getShowOnlyVisibleMode()).toBeFalse();
+    findAndClickCheckbox('.top-view-controls .show-only-visible  input');
+    expect(component.rectsComponent.getShowOnlyVisibleMode()).toBeTrue();
+
+    const newFixture = TestBed.createComponent(TestHostComponent);
+    const newComponent = newFixture.componentInstance;
+    newFixture.detectChanges();
+
+    expect(newComponent.rectsComponent.getZSpacingFactor()).toEqual(0.06);
+    expect(newComponent.rectsComponent.getShowVirtualMode()).toBeTrue();
+    expect(newComponent.rectsComponent.getShowOnlyVisibleMode()).toBeTrue();
+  });
+
+  function findAndClickCheckbox(selector: string) {
+    const box = assertDefined(htmlElement.querySelector(selector)) as HTMLInputElement;
+    box.dispatchEvent(new Event('click'));
+    fixture.detectChanges();
+  }
+
+  @Component({
+    selector: 'host-component',
+    template: `
+      <rects-view
+        title="TestRectsView"
+        [store]="store"
+        [rects]="rects"
+        [displayIds]="displayIds"></rects-view>
+    `,
+  })
+  class TestHostComponent {
+    store = new PersistentStore();
+    rects: UiRect[] = [];
+    displayIds: number[] = [];
+
+    @ViewChild(RectsComponent)
+    rectsComponent!: RectsComponent;
+  }
 });

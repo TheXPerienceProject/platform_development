@@ -23,8 +23,6 @@ import static android.companion.virtual.VirtualDeviceParams.POLICY_TYPE_AUDIO;
 import static android.companion.virtual.VirtualDeviceParams.POLICY_TYPE_CLIPBOARD;
 import static android.companion.virtual.VirtualDeviceParams.POLICY_TYPE_RECENTS;
 import static android.companion.virtual.VirtualDeviceParams.POLICY_TYPE_SENSORS;
-import static android.os.Build.VERSION.SDK_INT;
-import static android.os.Build.VERSION_CODES.VANILLA_ICE_CREAM;
 
 import android.annotation.SuppressLint;
 import android.app.Notification;
@@ -53,6 +51,7 @@ import android.util.Log;
 import android.view.Display;
 
 import androidx.annotation.NonNull;
+import androidx.core.os.BuildCompat;
 
 import com.example.android.vdmdemo.common.ConnectionManager;
 import com.example.android.vdmdemo.common.RemoteEventProto.DeviceCapabilities;
@@ -66,6 +65,7 @@ import com.google.common.util.concurrent.MoreExecutors;
 import dagger.hilt.android.AndroidEntryPoint;
 
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
@@ -100,8 +100,10 @@ public final class VdmService extends Hilt_VdmService {
     @Inject ConnectionManager mConnectionManager;
     @Inject RemoteIo mRemoteIo;
     @Inject AudioStreamer mAudioStreamer;
+    @Inject AudioInjector mAudioInjector;
     @Inject PreferenceController mPreferenceController;
     @Inject DisplayRepository mDisplayRepository;
+    @Inject InputController mInputController;
 
     private RemoteSensorManager mRemoteSensorManager = null;
 
@@ -111,6 +113,7 @@ public final class VdmService extends Hilt_VdmService {
     private Intent mPendingRemoteIntent = null;
     private @RemoteDisplay.DisplayType int mPendingDisplayType = RemoteDisplay.DISPLAY_TYPE_APP;
     private DisplayManager mDisplayManager;
+    private Consumer<Boolean> mVirtualDeviceListener;
 
     private final DisplayManager.DisplayListener mDisplayListener =
             new DisplayManager.DisplayListener() {
@@ -126,10 +129,9 @@ public final class VdmService extends Hilt_VdmService {
                 }
             };
 
-    private final ConnectionManager.ConnectionCallback mConnectionCallback =
-            new ConnectionManager.ConnectionCallback() {
-                @Override
-                public void onDisconnected() {
+    private final Consumer<ConnectionManager.ConnectionStatus> mConnectionCallback =
+            (status) -> {
+                if (status.state != ConnectionManager.ConnectionStatus.State.CONNECTED) {
                     mDeviceCapabilities = null;
                     closeVirtualDevice();
                 }
@@ -194,15 +196,12 @@ public final class VdmService extends Hilt_VdmService {
         super.onCreate();
 
         mConnectionManager.addConnectionCallback(mConnectionCallback);
+        mConnectionManager.startHostSession();
 
         mDisplayManager = getSystemService(DisplayManager.class);
         Objects.requireNonNull(mDisplayManager).registerDisplayListener(mDisplayListener, null);
 
         mRemoteIo.addMessageConsumer(mRemoteEventConsumer);
-
-        if (mPreferenceController.getBoolean(R.string.pref_enable_client_audio)) {
-            mAudioStreamer.start();
-        }
 
         mPreferenceController.addPreferenceObserver(this, Map.of(
                 R.string.pref_hide_from_recents,
@@ -217,9 +216,7 @@ public final class VdmService extends Hilt_VdmService {
                 },
 
                 R.string.pref_enable_client_audio,
-                b -> {
-                    if ((Boolean) b) mAudioStreamer.start(); else mAudioStreamer.stop();
-                },
+                b -> handleAudioCapabilities(),
 
                 R.string.pref_display_ime_policy,
                 s -> {
@@ -246,14 +243,19 @@ public final class VdmService extends Hilt_VdmService {
         closeVirtualDevice();
         mRemoteIo.removeMessageConsumer(mRemoteEventConsumer);
         mDisplayManager.unregisterDisplayListener(mDisplayListener);
-        mAudioStreamer.close();
+        mAudioStreamer.stop();
+        mAudioInjector.stop();
+    }
+
+    void setVirtualDeviceListener(Consumer<Boolean> listener) {
+        mVirtualDeviceListener = listener;
     }
 
     private void processRemoteEvent(RemoteEvent event) {
         if (event.hasDeviceCapabilities()) {
-            Log.i(TAG, "Host received device capabilities");
             mDeviceCapabilities = event.getDeviceCapabilities();
             associateAndCreateVirtualDevice();
+            handleAudioCapabilities();
         } else if (event.hasDisplayCapabilities() && !mDisplayRepository.resetDisplay(event)) {
             RemoteDisplay remoteDisplay =
                     new RemoteDisplay(
@@ -266,12 +268,26 @@ public final class VdmService extends Hilt_VdmService {
             mDisplayRepository.addDisplay(remoteDisplay);
             mPendingDisplayType = RemoteDisplay.DISPLAY_TYPE_APP;
             if (mPendingRemoteIntent != null) {
-                remoteDisplay.launchIntent(
-                        PendingIntent.getActivity(
-                                this, 0, mPendingRemoteIntent, PendingIntent.FLAG_IMMUTABLE));
+                remoteDisplay.launchIntent(mPendingRemoteIntent);
             }
         } else if (event.hasStopStreaming() && !event.getStopStreaming().getPause()) {
             mDisplayRepository.removeDisplayByRemoteId(event.getDisplayId());
+        } else if (event.hasDisplayChangeEvent() && event.getDisplayChangeEvent().getFocused()) {
+            mInputController.setFocusedRemoteDisplayId(event.getDisplayId());
+        }
+    }
+
+    private void handleAudioCapabilities() {
+        if (mPreferenceController.getBoolean(R.string.pref_enable_client_audio)) {
+            if (mDeviceCapabilities.getSupportsAudioOutput()) {
+                mAudioStreamer.start();
+            }
+            if (mDeviceCapabilities.getSupportsAudioInput()) {
+                mAudioInjector.start();
+            }
+        } else {
+            mAudioStreamer.stop();
+            mAudioInjector.stop();
         }
     }
 
@@ -338,7 +354,8 @@ public final class VdmService extends Hilt_VdmService {
                 new VirtualDeviceParams.Builder()
                         .setName("VirtualDevice - " + mDeviceCapabilities.getDeviceName())
                         .setDevicePolicy(POLICY_TYPE_AUDIO, DEVICE_POLICY_CUSTOM)
-                        .setAudioPlaybackSessionId(mAudioStreamer.getPlaybackSessionId());
+                        .setAudioPlaybackSessionId(mAudioStreamer.getPlaybackSessionId())
+                        .setAudioRecordingSessionId(mAudioInjector.getRecordingSessionId());
 
         if (mPreferenceController.getBoolean(R.string.pref_always_unlocked_device)) {
             virtualDeviceBuilder.setLockState(LOCK_STATE_ALWAYS_UNLOCKED);
@@ -400,13 +417,27 @@ public final class VdmService extends Hilt_VdmService {
                 MoreExecutors.directExecutor(),
                 new ActivityListener() {
 
+                    private final HashSet<Integer> mSeenTrampolines = new HashSet<>();
+
                     @Override
                     public void onTopActivityChanged(
                             int displayId, @NonNull ComponentName componentName) {
+                        Log.w(TAG, "onTopActivityChanged " + displayId + ": " + componentName);
                         int remoteDisplayId = mDisplayRepository.getRemoteDisplayId(displayId);
                         if (remoteDisplayId == Display.INVALID_DISPLAY) {
                             return;
                         }
+
+                        // The second time the trampoline activity is shown on the display, simply
+                        // remove the display.
+                        if (new ComponentName(VdmService.this, EmptyTrampolineActivity.class)
+                                .equals(componentName)) {
+                            if (!mSeenTrampolines.add(displayId)) {
+                                onDisplayEmpty(displayId);
+                            }
+                            return;
+                        }
+
                         String title = "";
                         try {
                             ActivityInfo activityInfo =
@@ -427,13 +458,17 @@ public final class VdmService extends Hilt_VdmService {
                     public void onDisplayEmpty(int displayId) {
                         Log.i(TAG, "Display " + displayId + " is empty, removing");
                         mDisplayRepository.removeDisplay(displayId);
+                        mSeenTrampolines.remove(displayId);
                     }
                 });
         mVirtualDevice.addActivityListener(
                 MoreExecutors.directExecutor(),
-                new RunningVdmUidsTracker(getApplicationContext(), mAudioStreamer));
+                new RunningVdmUidsTracker(getApplicationContext(), mAudioStreamer, mAudioInjector));
 
         Log.i(TAG, "Created virtual device");
+        if (mVirtualDeviceListener != null) {
+            mVirtualDeviceListener.accept(true);
+        }
     }
 
     private void lockdown() {
@@ -442,6 +477,9 @@ public final class VdmService extends Hilt_VdmService {
     }
 
     private synchronized void closeVirtualDevice() {
+        if (mVirtualDeviceListener != null) {
+            mVirtualDeviceListener.accept(false);
+        }
         if (mRemoteSensorManager != null) {
             mRemoteSensorManager.close();
             mRemoteSensorManager = null;
@@ -452,6 +490,10 @@ public final class VdmService extends Hilt_VdmService {
             mVirtualDevice.close();
             mVirtualDevice = null;
         }
+    }
+
+    boolean isVirtualDeviceActive() {
+        return mVirtualDevice != null;
     }
 
     int[] getRemoteDisplayIds() {
@@ -475,17 +517,18 @@ public final class VdmService extends Hilt_VdmService {
     }
 
     void startStreaming(Intent intent) {
-        mPendingRemoteIntent = intent;
+        mPendingRemoteIntent = new Intent(this, EmptyTrampolineActivity.class);
+        mPendingRemoteIntent.putExtra(Intent.EXTRA_INTENT, intent);
+        mPendingRemoteIntent.addFlags(
+                Intent.FLAG_ACTIVITY_MULTIPLE_TASK | Intent.FLAG_ACTIVITY_NEW_TASK);
         mRemoteIo.sendMessage(
                 RemoteEvent.newBuilder().setStartStreaming(StartStreaming.newBuilder()).build());
     }
 
     void startIntentOnDisplayIndex(Intent intent, int displayIndex) {
-        PendingIntent pendingIntent =
-                PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE);
         mDisplayRepository
                 .getDisplayByIndex(displayIndex)
-                .ifPresent(d -> d.launchIntent(pendingIntent));
+                .ifPresent(d -> d.launchIntent(intent));
     }
 
     private void recreateVirtualDevice() {
@@ -498,7 +541,7 @@ public final class VdmService extends Hilt_VdmService {
     }
 
     private void updateDevicePolicy(int policyType, boolean custom) {
-        if (SDK_INT < VANILLA_ICE_CREAM) {
+        if (!BuildCompat.isAtLeastV()) {
             recreateVirtualDevice();
         } else if (mVirtualDevice != null) {
             mVirtualDevice.setDevicePolicy(

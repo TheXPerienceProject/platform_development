@@ -23,8 +23,9 @@ import {ViewerEvents} from 'viewers/common/viewer_events';
 import {View, Viewer} from 'viewers/viewer';
 
 abstract class ViewerInputMethod implements Viewer {
-  protected htmlElement: HTMLElement;
-  protected presenter: PresenterInputMethod;
+  protected readonly htmlElement: HTMLElement;
+  protected readonly presenter: PresenterInputMethod;
+  protected abstract readonly view: View;
 
   constructor(traces: Traces, storage: Storage) {
     this.htmlElement = document.createElement('viewer-input-method');
@@ -40,7 +41,10 @@ abstract class ViewerInputMethod implements Viewer {
     // do nothing
   }
 
-  abstract getViews(): View[];
+  getViews(): View[] {
+    return [this.view];
+  }
+
   abstract getDependencies(): TraceType[];
 
   protected imeUiCallback = (uiData: ImeUiData) => {
@@ -64,17 +68,25 @@ abstract class ViewerInputMethod implements Viewer {
     this.htmlElement.addEventListener(ViewerEvents.HierarchyFilterChange, (event) =>
       this.presenter.filterHierarchyTree((event as CustomEvent).detail.filterString)
     );
-    this.htmlElement.addEventListener(ViewerEvents.PropertiesUserOptionsChange, (event) =>
-      this.presenter.updatePropertiesTree((event as CustomEvent).detail.userOptions)
+    this.htmlElement.addEventListener(
+      ViewerEvents.PropertiesUserOptionsChange,
+      async (event) =>
+        await this.presenter.updatePropertiesTree((event as CustomEvent).detail.userOptions)
     );
-    this.htmlElement.addEventListener(ViewerEvents.PropertiesFilterChange, (event) =>
-      this.presenter.filterPropertiesTree((event as CustomEvent).detail.filterString)
+    this.htmlElement.addEventListener(
+      ViewerEvents.PropertiesFilterChange,
+      async (event) =>
+        await this.presenter.filterPropertiesTree((event as CustomEvent).detail.filterString)
     );
-    this.htmlElement.addEventListener(ViewerEvents.SelectedTreeChange, (event) =>
-      this.presenter.newPropertiesTree((event as CustomEvent).detail.selectedItem)
+    this.htmlElement.addEventListener(
+      ViewerEvents.SelectedTreeChange,
+      async (event) =>
+        await this.presenter.newPropertiesTree((event as CustomEvent).detail.selectedItem)
     );
-    this.htmlElement.addEventListener(ViewerEvents.AdditionalPropertySelected, (event) =>
-      this.presenter.newAdditionalPropertiesTree((event as CustomEvent).detail.selectedItem)
+    this.htmlElement.addEventListener(
+      ViewerEvents.AdditionalPropertySelected,
+      async (event) =>
+        await this.presenter.newAdditionalPropertiesTree((event as CustomEvent).detail.selectedItem)
     );
   }
 

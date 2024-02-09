@@ -14,8 +14,9 @@
  * limitations under the License.
  */
 
-import {RealTimestamp} from 'common/time';
-import {WinscopeError, WinscopeErrorType} from 'messaging/winscope_error';
+import {assertDefined} from 'common/assert_utils';
+import {RealTimestamp, TimeRange, TimestampType} from 'common/time';
+import {TraceHasOldData, TraceOverridden, WinscopeError} from 'messaging/winscope_error';
 import {FileAndParser} from 'parsers/file_and_parser';
 import {FileAndParsers} from 'parsers/file_and_parsers';
 import {ParserBuilder} from 'test/unit/parser_builder';
@@ -36,6 +37,7 @@ describe('LoadedParsers', () => {
   const timestamps = [
     new RealTimestamp(5n * 60n * 1000000000n + 10n), // 5m10ns
     new RealTimestamp(5n * 60n * 1000000000n + 11n), // 5m11ns
+    new RealTimestamp(5n * 60n * 1000000000n + 12n), // 5m12ns
   ];
 
   const filename = 'filename';
@@ -108,47 +110,29 @@ describe('LoadedParsers', () => {
     expectLoadResult([parserSf0], []);
 
     loadParsers([parserSf1], []);
-    expectLoadResult(
-      [parserSf1],
-      [new WinscopeError(WinscopeErrorType.FILE_OVERRIDDEN, filename, TraceType.SURFACE_FLINGER)]
-    );
+    expectLoadResult([parserSf1], [new TraceOverridden(filename)]);
   });
 
   it('gives priority to parsers with longer data', () => {
     loadParsers([parserWm0, parserWm_dump], []);
-    expectLoadResult(
-      [parserWm0],
-      [new WinscopeError(WinscopeErrorType.FILE_OVERRIDDEN, filename, TraceType.WINDOW_MANAGER)]
-    );
+    expectLoadResult([parserWm0], [new TraceOverridden(filename)]);
   });
 
   describe('drops legacy parser with old data (dangling old trace file)', () => {
+    const timeGapFrom = assertDefined(
+      parserSf_longButOldData.getTimestamps(TimestampType.REAL)?.at(-1)
+    );
+    const timeGapTo = assertDefined(parserWm0.getTimestamps(TimestampType.REAL)?.at(0));
+    const timeGap = new TimeRange(timeGapFrom, timeGapTo);
+
     it('taking into account other legacy parsers', () => {
       loadParsers([parserSf_longButOldData, parserWm0], []);
-      expectLoadResult(
-        [parserWm0],
-        [
-          new WinscopeError(
-            WinscopeErrorType.FILE_OUTDATED,
-            filename,
-            parserSf_longButOldData.getTraceType()
-          ),
-        ]
-      );
+      expectLoadResult([parserWm0], [new TraceHasOldData(filename, timeGap)]);
     });
 
     it('taking into account perfetto parsers', () => {
       loadParsers([parserSf_longButOldData], [parserWm0]);
-      expectLoadResult(
-        [parserWm0],
-        [
-          new WinscopeError(
-            WinscopeErrorType.FILE_OUTDATED,
-            filename,
-            parserSf_longButOldData.getTraceType()
-          ),
-        ]
-      );
+      expectLoadResult([parserWm0], [new TraceHasOldData(filename, timeGap)]);
     });
 
     it('taking into account already-loaded parsers', () => {
@@ -157,21 +141,72 @@ describe('LoadedParsers', () => {
       // Drop parser with old data, even if it provides
       // a longer trace than the already-loaded parser
       loadParsers([parserSf_longButOldData], []);
-      expectLoadResult(
-        [parserWm0],
-        [
-          new WinscopeError(
-            WinscopeErrorType.FILE_OUTDATED,
-            filename,
-            parserSf_longButOldData.getTraceType()
-          ),
-        ]
-      );
+      expectLoadResult([parserWm0], [new TraceHasOldData(filename, timeGap)]);
     });
 
     it('doesnt drop legacy parser with dump (zero timestamp)', () => {
       loadParsers([parserWm_dump, parserSf0], []);
       expectLoadResult([parserWm_dump, parserSf0], []);
+    });
+
+    it('is robust to traces with time range overlap', () => {
+      const parser = parserSf0;
+      const timestamps = assertDefined(parserSf0.getTimestamps(TimestampType.REAL));
+
+      const timestampsOverlappingFront = [timestamps[0].add(-1n), timestamps[0].add(1n)];
+      const parserOverlappingFront = new ParserBuilder<object>()
+        .setType(TraceType.TRANSACTIONS)
+        .setTimestamps(timestampsOverlappingFront)
+        .setDescriptors([filename])
+        .build();
+
+      const timestampsOverlappingBack = [
+        timestamps[timestamps.length - 1].add(-1n),
+        timestamps[timestamps.length - 1].add(1n),
+      ];
+      const parserOverlappingBack = new ParserBuilder<object>()
+        .setType(TraceType.TRANSITION)
+        .setTimestamps(timestampsOverlappingBack)
+        .setDescriptors([filename])
+        .build();
+
+      const timestampsOverlappingEntirely = [
+        timestamps[0].add(-1n),
+        timestamps[timestamps.length - 1].add(1n),
+      ];
+      const parserOverlappingEntirely = new ParserBuilder<object>()
+        .setType(TraceType.VIEW_CAPTURE)
+        .setTimestamps(timestampsOverlappingEntirely)
+        .setDescriptors([filename])
+        .build();
+
+      const timestampsOverlappingExactly = [timestamps[0], timestamps[timestamps.length - 1]];
+      const parserOverlappingExactly = new ParserBuilder<object>()
+        .setType(TraceType.WINDOW_MANAGER)
+        .setTimestamps(timestampsOverlappingExactly)
+        .setDescriptors([filename])
+        .build();
+
+      loadParsers(
+        [
+          parser,
+          parserOverlappingFront,
+          parserOverlappingBack,
+          parserOverlappingEntirely,
+          parserOverlappingExactly,
+        ],
+        []
+      );
+      expectLoadResult(
+        [
+          parser,
+          parserOverlappingFront,
+          parserOverlappingBack,
+          parserOverlappingEntirely,
+          parserOverlappingExactly,
+        ],
+        []
+      );
     });
   });
 
@@ -193,16 +228,10 @@ describe('LoadedParsers', () => {
 
     it('when a perfetto parser is already loaded', () => {
       loadParsers([parserSf0], [parserSf1]);
-      expectLoadResult(
-        [parserSf1],
-        [new WinscopeError(WinscopeErrorType.FILE_OVERRIDDEN, filename, TraceType.SURFACE_FLINGER)]
-      );
+      expectLoadResult([parserSf1], [new TraceOverridden(filename)]);
 
       loadParsers([parserSf0], []);
-      expectLoadResult(
-        [parserSf1],
-        [new WinscopeError(WinscopeErrorType.FILE_OVERRIDDEN, filename, TraceType.SURFACE_FLINGER)]
-      );
+      expectLoadResult([parserSf1], [new TraceOverridden(filename)]);
     });
 
     it('when a perfetto parser is loaded afterwards', () => {
@@ -210,31 +239,19 @@ describe('LoadedParsers', () => {
       expectLoadResult([parserSf0], []);
 
       loadParsers([], [parserSf1]);
-      expectLoadResult(
-        [parserSf1],
-        [new WinscopeError(WinscopeErrorType.FILE_OVERRIDDEN, filename, TraceType.SURFACE_FLINGER)]
-      );
+      expectLoadResult([parserSf1], [new TraceOverridden(filename)]);
     });
   });
 
   describe('is robust to multiple parsers of same type loaded at once', () => {
     it('legacy parsers', () => {
       loadParsers([parserSf0, parserSf1], []);
-      expectLoadResult(
-        [parserSf0],
-        [new WinscopeError(WinscopeErrorType.FILE_OVERRIDDEN, filename, TraceType.SURFACE_FLINGER)]
-      );
+      expectLoadResult([parserSf0], [new TraceOverridden(filename)]);
     });
 
     it('legacy + perfetto parsers', () => {
       loadParsers([parserSf0, parserSf0], [parserSf1]);
-      expectLoadResult(
-        [parserSf1],
-        [
-          new WinscopeError(WinscopeErrorType.FILE_OVERRIDDEN, filename, TraceType.SURFACE_FLINGER),
-          new WinscopeError(WinscopeErrorType.FILE_OVERRIDDEN, filename, TraceType.SURFACE_FLINGER),
-        ]
-      );
+      expectLoadResult([parserSf1], [new TraceOverridden(filename), new TraceOverridden(filename)]);
     });
   });
 

@@ -14,7 +14,9 @@
  * limitations under the License.
  */
 import {TimestampType} from 'common/time';
-import {TransactionsTraceFileProto, winscopeJson} from 'parsers/proto_types';
+import {TamperedMessageType} from 'parsers/tampered_message_type';
+import root from 'protos/transactions/latest/json';
+import {perfetto} from 'protos/transactions/latest/static';
 import {
   CustomQueryParserResultTypeMap,
   CustomQueryType,
@@ -25,26 +27,33 @@ import {TraceFile} from 'trace/trace_file';
 import {TraceType} from 'trace/trace_type';
 import {WasmEngineProxy} from 'trace_processor/wasm_engine_proxy';
 import {AbstractParser} from './abstract_parser';
-import {FakeProto} from './fake_proto_builder';
 import {FakeProtoTransformer} from './fake_proto_transformer';
 import {Utils} from './utils';
 
 export class ParserTransactions extends AbstractParser<object> {
-  private protoTransformer = new FakeProtoTransformer(
-    winscopeJson,
-    'WinscopeTraceData',
-    'transactions'
+  private static readonly TransactionsTraceEntryProto = TamperedMessageType.tamper(
+    root.lookupType('perfetto.protos.TransactionTraceEntry')
   );
+  private static readonly LayerState = root.lookupType('perfetto.protos.LayerState');
+  private static readonly DisplayState = root.lookupType('perfetto.protos.DisplayState');
+  private protoTransformer: FakeProtoTransformer;
 
   constructor(traceFile: TraceFile, traceProcessor: WasmEngineProxy) {
     super(traceFile, traceProcessor);
+
+    this.protoTransformer = new FakeProtoTransformer(
+      ParserTransactions.TransactionsTraceEntryProto
+    );
   }
 
   override getTraceType(): TraceType {
     return TraceType.TRANSACTIONS;
   }
 
-  override async getEntry(index: number, timestampType: TimestampType): Promise<object> {
+  override async getEntry(
+    index: number,
+    timestampType: TimestampType
+  ): Promise<perfetto.protos.ITransactionTraceEntry> {
     let entryProto = await Utils.queryEntry(this.traceProcessor, this.getTableName(), index);
     entryProto = this.protoTransformer.transform(entryProto);
     entryProto = this.decodeWhatBitsetFields(entryProto);
@@ -66,7 +75,9 @@ export class ParserTransactions extends AbstractParser<object> {
       .getResult();
   }
 
-  private decodeWhatBitsetFields(transactionTraceEntry: FakeProto): FakeProto {
+  private decodeWhatBitsetFields(
+    transactionTraceEntry: perfetto.protos.ITransactionTraceEntry
+  ): perfetto.protos.ITransactionTraceEntry {
     const decodeBitset32 = (bitset: number, EnumProto: any) => {
       return Object.keys(EnumProto).filter((key) => {
         const value = EnumProto[key];
@@ -81,31 +92,29 @@ export class ParserTransactions extends AbstractParser<object> {
       return tokens.join(' | ');
     };
 
-    const LayerStateChangesLsbEnum = (TransactionsTraceFileProto?.parent as any).LayerState
-      .ChangesLsb;
-    const LayerStateChangesMsbEnum = (TransactionsTraceFileProto?.parent as any).LayerState
-      .ChangesMsb;
-    const DisplayStateChangesEnum = (TransactionsTraceFileProto?.parent as any).DisplayState
-      .Changes;
+    const LayerStateChangesLsbEnum = (ParserTransactions.LayerState as any).ChangesLsb;
+    const LayerStateChangesMsbEnum = (ParserTransactions.LayerState as any).ChangesMsb;
+    const DisplayStateChangesEnum = (ParserTransactions.DisplayState as any).Changes;
 
-    transactionTraceEntry.transactions.forEach((transactionState: any) => {
-      transactionState.layerChanges.forEach((layerState: any) => {
-        layerState.what = concatBitsetTokens(
-          decodeBitset32(Number(layerState.what), LayerStateChangesLsbEnum).concat(
-            decodeBitset32(Number(layerState.what >> 32n), LayerStateChangesMsbEnum)
+    transactionTraceEntry.transactions?.forEach((transactionState) => {
+      transactionState?.layerChanges?.forEach((layerState) => {
+        const originalValue = BigInt(layerState.what?.toString() ?? 0n);
+        (layerState.what as unknown as string) = concatBitsetTokens(
+          decodeBitset32(Number(originalValue), LayerStateChangesLsbEnum).concat(
+            decodeBitset32(Number(originalValue >> 32n), LayerStateChangesMsbEnum)
           )
         );
       });
 
-      transactionState.displayChanges.forEach((displayState: any) => {
-        displayState.what = concatBitsetTokens(
+      transactionState.displayChanges?.forEach((displayState) => {
+        (displayState.what as unknown as string) = concatBitsetTokens(
           decodeBitset32(Number(displayState.what), DisplayStateChangesEnum)
         );
       });
     });
 
-    transactionTraceEntry?.addedDisplays?.forEach((displayState: any) => {
-      displayState.what = concatBitsetTokens(
+    transactionTraceEntry?.addedDisplays?.forEach((displayState) => {
+      (displayState.what as unknown as string) = concatBitsetTokens(
         decodeBitset32(Number(displayState.what), DisplayStateChangesEnum)
       );
     });

@@ -18,7 +18,7 @@ import {Component, ElementRef, Inject, Input} from '@angular/core';
 import {ElapsedTimestamp, TimestampType} from 'common/time';
 import {TimeUtils} from 'common/time_utils';
 import {Transition} from 'flickerlib/common';
-import {Terminal} from 'viewers/common/ui_tree_utils';
+import {Terminal} from 'viewers/common/ui_tree_utils_legacy';
 import {Events} from './events';
 import {UiData} from './ui_data';
 
@@ -101,12 +101,11 @@ import {UiData} from './ui_data';
 
       <div class="container-properties">
         <h3 class="properties-title mat-title">Selected Transition</h3>
-        <tree-view
+        <tree-view-legacy
           [item]="uiData.selectedTransitionPropertiesTree"
           [showNode]="showNode"
-          [isLeaf]="isLeaf"
-          [isAlwaysCollapsed]="true">
-        </tree-view>
+          [isLeaf]="isLeaf">
+        </tree-view-legacy>
         <div *ngIf="!uiData.selectedTransitionPropertiesTree">No selected transition.</div>
       </div>
     </div>

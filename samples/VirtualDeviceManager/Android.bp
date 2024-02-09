@@ -9,7 +9,7 @@ android_app {
     min_sdk_version: "34",
     privileged: true,
     srcs: [
-        "host/src/**/*.java"
+        "host/src/**/*.java",
     ],
     resource_dirs: [
         "host/res",
@@ -20,10 +20,15 @@ android_app {
         "android.companion.virtualdevice.flags-aconfig-java",
         "androidx.annotation_annotation",
         "androidx.appcompat_appcompat",
+        "androidx.core_core",
         "androidx.preference_preference",
+        "com.google.android.material_material",
         "guava",
         "hilt_android",
     ],
+    lint: {
+        baseline_filename: "lint-baseline.xml",
+    },
 }
 
 android_app {
@@ -32,7 +37,7 @@ android_app {
     sdk_version: "current",
     min_sdk_version: "33",
     srcs: [
-        "client/src/**/*.java"
+        "client/src/**/*.java",
     ],
     resource_dirs: [
         "client/res",
@@ -54,7 +59,7 @@ android_app {
     sdk_version: "current",
     min_sdk_version: "34",
     srcs: [
-        "demos/src/**/*.java"
+        "demos/src/**/*.java",
     ],
     resource_dirs: [
         "demos/res",
@@ -83,6 +88,24 @@ android_library {
     static_libs: [
         "androidx.appcompat_appcompat",
         "guava",
+        "hilt_android",
+    ],
+}
+
+android_app {
+    name: "VirtualCameraDemo",
+    manifest: "virtualcamera/AndroidManifest.xml",
+    privileged: true,
+    platform_apis: true,
+    srcs: [
+        "virtualcamera/src/**/*.java",
+    ],
+    resource_dirs: [
+        "virtualcamera/res",
+    ],
+    static_libs: [
+        "androidx.annotation_annotation",
+        "androidx.appcompat_appcompat",
         "hilt_android",
     ],
 }

@@ -15,7 +15,7 @@
  */
 
 import {ProgressListener} from 'messaging/progress_listener';
-import {WinscopeError, WinscopeErrorType} from 'messaging/winscope_error';
+import {UnsupportedFileFormat} from 'messaging/winscope_error';
 import {WinscopeErrorListener} from 'messaging/winscope_error_listener';
 import {Parser} from 'trace/parser';
 import {TraceFile} from 'trace/trace_file';
@@ -27,13 +27,13 @@ import {ParserInputMethodService} from './parser_input_method_service';
 import {ParserProtoLog} from './parser_protolog';
 import {ParserScreenRecording} from './parser_screen_recording';
 import {ParserScreenRecordingLegacy} from './parser_screen_recording_legacy';
-import {ParserSurfaceFlinger} from './parser_surface_flinger';
 import {ParserTransactions} from './parser_transactions';
 import {ParserTransitionsShell} from './parser_transitions_shell';
 import {ParserTransitionsWm} from './parser_transitions_wm';
 import {ParserViewCapture} from './parser_view_capture';
 import {ParserWindowManager} from './parser_window_manager';
 import {ParserWindowManagerDump} from './parser_window_manager_dump';
+import {ParserSurfaceFlinger} from './surface_flinger/parser_surface_flinger';
 
 export class ParserFactory {
   static readonly PARSERS = [
@@ -84,9 +84,7 @@ export class ParserFactory {
       }
 
       if (!hasFoundParser) {
-        errorListener?.onError(
-          new WinscopeError(WinscopeErrorType.UNSUPPORTED_FILE_FORMAT, traceFile.getDescriptor())
-        );
+        errorListener?.onError(new UnsupportedFileFormat(traceFile.getDescriptor()));
       }
     }
     return parsers;
