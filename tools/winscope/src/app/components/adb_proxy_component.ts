@@ -156,10 +156,10 @@ export class AdbProxyComponent {
   proxy: ProxyClient = proxyClient;
 
   @Output()
-  proxyChange = new EventEmitter<ProxyClient>();
+  readonly proxyChange = new EventEmitter<ProxyClient>();
 
   @Output()
-  addKey = new EventEmitter<string>();
+  readonly addKey = new EventEmitter<string>();
 
   states = ProxyState;
   proxyKeyItem = '';
@@ -168,17 +168,17 @@ export class AdbProxyComponent {
   readonly proxyCommand: string =
     'python3 $ANDROID_BUILD_TOP/development/tools/winscope/src/adb/winscope_proxy.py';
 
-  onRetryButtonClick() {
+  async onRetryButtonClick() {
     if (this.proxyKeyItem.length > 0) {
       this.addKey.emit(this.proxyKeyItem);
     }
-    this.proxy.setState(this.states.CONNECTING);
+    await this.proxy.setState(this.states.CONNECTING);
     this.proxyChange.emit(this.proxy);
   }
 
-  onKeydownEnterProxyKeyInput(event: MouseEvent) {
+  async onKeydownEnterProxyKeyInput(event: MouseEvent) {
     (event.target as HTMLInputElement).blur();
-    this.onRetryButtonClick();
+    await this.onRetryButtonClick();
   }
 
   onDownloadProxyClick() {

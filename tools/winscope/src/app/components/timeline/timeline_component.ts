@@ -321,7 +321,7 @@ export class TimelineComponent implements WinscopeEventEmitter, WinscopeEventLis
   @Input() timelineData!: TimelineData;
   @Input() availableTraces: TraceType[] = [];
 
-  @Output() collapsedTimelineSizeChanged = new EventEmitter<number>();
+  @Output() readonly collapsedTimelineSizeChanged = new EventEmitter<number>();
 
   @ViewChild('collapsedTimeline') private collapsedTimelineRef!: ElementRef;
 
@@ -504,7 +504,7 @@ export class TimelineComponent implements WinscopeEventEmitter, WinscopeEventLis
 
   @HostListener('document:keydown', ['$event'])
   async handleKeyboardEvent(event: KeyboardEvent) {
-    if (this.isInputFormFocused) {
+    if (this.isInputFormFocused || !this.timelineData.hasTimestamps()) {
       return;
     }
     if (event.key === 'ArrowLeft') {

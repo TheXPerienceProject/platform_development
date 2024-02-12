@@ -22,7 +22,7 @@ import {DiffType} from './diff_type';
 export class UiPropertyTreeNode extends PropertyTreeNode implements DiffNode {
   private diff: DiffType = DiffType.NONE;
   private displayName: string = this.name;
-  private oldValue: string = 'null';
+  private oldValue = 'null';
 
   static from(node: PropertyTreeNode): UiPropertyTreeNode {
     const displayNode = new UiPropertyTreeNode(
@@ -38,7 +38,7 @@ export class UiPropertyTreeNode extends PropertyTreeNode implements DiffNode {
     displayNode.setIsRoot(node.isRoot());
 
     node.getAllChildren().forEach((child) => {
-      displayNode.addChild(UiPropertyTreeNode.from(child));
+      displayNode.addOrReplaceChild(UiPropertyTreeNode.from(child));
     });
     return displayNode;
   }

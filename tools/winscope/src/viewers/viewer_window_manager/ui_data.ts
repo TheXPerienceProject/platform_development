@@ -15,10 +15,8 @@
  */
 import {TraceType} from 'trace/trace_type';
 import {DisplayIdentifier} from 'viewers/common/display_identifier';
-import {
-  HierarchyTreeNodeLegacy,
-  PropertiesTreeNodeLegacy,
-} from 'viewers/common/ui_tree_utils_legacy';
+import {UiHierarchyTreeNode} from 'viewers/common/ui_hierarchy_tree_node';
+import {UiPropertyTreeNode} from 'viewers/common/ui_property_tree_node';
 import {UserOptions} from 'viewers/common/user_options';
 import {UiRect} from 'viewers/components/rects/types2d';
 
@@ -26,13 +24,13 @@ export class UiData {
   dependencies: TraceType[];
   rects: UiRect[] = [];
   displays: DisplayIdentifier[] = [];
-  highlightedItem: string = '';
-  highlightedProperty: string = '';
-  pinnedItems: HierarchyTreeNodeLegacy[] = [];
+  highlightedItem = '';
+  highlightedProperty = '';
+  pinnedItems: UiHierarchyTreeNode[] = [];
   hierarchyUserOptions: UserOptions = {};
   propertiesUserOptions: UserOptions = {};
-  tree: HierarchyTreeNodeLegacy | null = null;
-  propertiesTree: PropertiesTreeNodeLegacy | null = null;
+  tree: UiHierarchyTreeNode | undefined;
+  propertiesTree: UiPropertyTreeNode | undefined;
 
   constructor(dependencies?: TraceType[]) {
     this.dependencies = dependencies ?? [];

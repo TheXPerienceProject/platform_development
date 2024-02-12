@@ -19,10 +19,11 @@ import {PropertyTreeNodeFactory} from './property_tree_node_factory';
 
 export class PropertyTreeBuilderFromProto {
   private denylistProperties: string[] = [];
-  private duplicateCount: number = 0;
+  private duplicateCount = 0;
   private proto: any | undefined;
   private rootId: string | number = 'UnknownRootId';
   private rootName: string | undefined = 'UnknownRootName';
+  private visitProtoType = true;
 
   setData(value: any): this {
     this.proto = value;
@@ -49,6 +50,11 @@ export class PropertyTreeBuilderFromProto {
     return this;
   }
 
+  setVisitPrototype(value: boolean): this {
+    this.visitProtoType = value;
+    return this;
+  }
+
   build(): PropertyTreeNode {
     if (this.proto === undefined) {
       throw Error('proto not set');
@@ -59,7 +65,7 @@ export class PropertyTreeBuilderFromProto {
     if (this.rootName === undefined) {
       throw Error('rootName not set');
     }
-    const factory = new PropertyTreeNodeFactory(this.denylistProperties);
+    const factory = new PropertyTreeNodeFactory(this.denylistProperties, this.visitProtoType);
 
     return factory.makeProtoProperty(this.makeNodeId(), '', this.proto);
   }
