@@ -14,10 +14,10 @@
  * limitations under the License.
  */
 
-import {Cuj, Event, Transition} from 'flickerlib/common';
-import {LogMessage} from './protolog';
+import {Cuj, Event} from 'flickerlib/common';
 import {ScreenRecordingTraceEntry} from './screen_recording';
 import {HierarchyTreeNode} from './tree_node/hierarchy_tree_node';
+import {PropertyTreeNode} from './tree_node/property_tree_node';
 
 export enum TraceType {
   WINDOW_MANAGER,
@@ -48,11 +48,11 @@ export enum TraceType {
 }
 
 export interface TraceEntryTypeMap {
-  [TraceType.PROTO_LOG]: LogMessage;
+  [TraceType.PROTO_LOG]: PropertyTreeNode;
   [TraceType.SURFACE_FLINGER]: HierarchyTreeNode;
   [TraceType.SCREEN_RECORDING]: ScreenRecordingTraceEntry;
   [TraceType.SYSTEM_UI]: object;
-  [TraceType.TRANSACTIONS]: object;
+  [TraceType.TRANSACTIONS]: PropertyTreeNode;
   [TraceType.TRANSACTIONS_LEGACY]: object;
   [TraceType.WAYLAND]: object;
   [TraceType.WAYLAND_DUMP]: object;
@@ -61,9 +61,9 @@ export interface TraceEntryTypeMap {
   [TraceType.INPUT_METHOD_MANAGER_SERVICE]: HierarchyTreeNode;
   [TraceType.INPUT_METHOD_SERVICE]: HierarchyTreeNode;
   [TraceType.EVENT_LOG]: Event;
-  [TraceType.WM_TRANSITION]: object;
-  [TraceType.SHELL_TRANSITION]: object;
-  [TraceType.TRANSITION]: Transition;
+  [TraceType.WM_TRANSITION]: PropertyTreeNode;
+  [TraceType.SHELL_TRANSITION]: PropertyTreeNode;
+  [TraceType.TRANSITION]: PropertyTreeNode;
   [TraceType.CUJS]: Cuj;
   [TraceType.TAG]: object;
   [TraceType.ERROR]: object;

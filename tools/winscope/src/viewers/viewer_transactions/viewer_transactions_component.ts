@@ -16,6 +16,7 @@
 import {CdkVirtualScrollViewport} from '@angular/cdk/scrolling';
 import {Component, ElementRef, Inject, Input, ViewChild} from '@angular/core';
 import {MatSelectChange} from '@angular/material/select';
+import {ViewerEvents} from 'viewers/common/viewer_events';
 import {Events} from './events';
 import {UiData} from './ui_data';
 
@@ -133,10 +134,21 @@ import {UiData} from './ui_data';
 
       <div class="container-properties">
         <h3 class="properties-title mat-title">Properties - Proto Dump</h3>
-        <tree-view-legacy
+        <div class="view-controls">
+          <mat-checkbox
+            *ngFor="let option of objectKeys(uiData.propertiesUserOptions)"
+            color="primary"
+            [(ngModel)]="uiData.propertiesUserOptions[option].enabled"
+            [disabled]="uiData.propertiesUserOptions[option].isUnavailable ?? false"
+            (ngModelChange)="onUserOptionChange()"
+            [matTooltip]="uiData.propertiesUserOptions[option].tooltip ?? ''"
+            >{{ uiData.propertiesUserOptions[option].name }}</mat-checkbox
+          >
+        </div>
+        <tree-view
           *ngIf="uiData.currentPropertiesTree"
           class="properties-tree"
-          [item]="uiData.currentPropertiesTree"></tree-view-legacy>
+          [node]="uiData.currentPropertiesTree"></tree-view>
       </div>
     </div>
   `,
@@ -169,25 +181,51 @@ import {UiData} from './ui_data';
         flex-direction: row;
       }
 
-      .filters div {
-        flex: 1;
+      .filters div,
+      .entries div {
         padding: 4px;
       }
 
-      .filters .vsyncid mat-form-field {
-        width: 120px;
+      .time {
+        flex: 0 1 250px;
       }
 
-      .filters div.time {
-        flex: 2;
+      .id {
+        flex: none;
+        width: 125px;
       }
 
-      .filters div.what {
-        flex: 3;
+      .id mat-form-field {
+        flex: none;
+        width: 125px;
       }
 
-      .filters .id mat-form-field {
-        width: 150px;
+      .vsyncid {
+        flex: none;
+        width: 110px;
+      }
+
+      .vsyncid mat-form-field {
+        flex: none;
+        width: 110px;
+      }
+
+      .pid {
+        flex: none;
+        width: 75px;
+      }
+
+      .uid {
+        flex: none;
+        width: 75px;
+      }
+
+      .type {
+        width: 200px;
+      }
+
+      .what {
+        flex: 2 0 250px;
       }
 
       .filters .what {
@@ -196,19 +234,6 @@ import {UiData} from './ui_data';
 
       .filters .what mat-form-field {
         width: 250px;
-      }
-
-      .entry div {
-        flex: 1;
-        padding: 4px;
-      }
-
-      .entry div.time {
-        flex: 2;
-      }
-
-      .entry div.what {
-        flex: 3;
       }
 
       .entry.current-entry {
@@ -222,7 +247,8 @@ import {UiData} from './ui_data';
       }
 
       mat-form-field {
-        width: 100px;
+        width: 75px;
+        font-size: 12px;
       }
 
       ::ng-deep .mat-select-panel-wrap {
@@ -234,6 +260,7 @@ import {UiData} from './ui_data';
   ],
 })
 class ViewerTransactionsComponent {
+  objectKeys = Object.keys;
   uiData: UiData = UiData.EMPTY;
   idString = '';
   whatSearchString = '';
@@ -283,6 +310,14 @@ class ViewerTransactionsComponent {
 
   onEntryClicked(index: number) {
     this.emitEvent(Events.EntryClicked, index);
+  }
+
+  onUserOptionChange() {
+    const event: CustomEvent = new CustomEvent(ViewerEvents.PropertiesUserOptionsChange, {
+      bubbles: true,
+      detail: {userOptions: this.uiData.propertiesUserOptions},
+    });
+    this.elementRef.nativeElement.dispatchEvent(event);
   }
 
   isCurrentEntry(index: number): boolean {
