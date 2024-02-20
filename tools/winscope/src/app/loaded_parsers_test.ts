@@ -21,8 +21,8 @@ import {FileAndParser} from 'parsers/file_and_parser';
 import {FileAndParsers} from 'parsers/file_and_parsers';
 import {ParserBuilder} from 'test/unit/parser_builder';
 import {Parser} from 'trace/parser';
+import {TraceFile} from 'trace/trace_file';
 import {TraceType} from 'trace/trace_type';
-import {TraceFile} from '../trace/trace_file';
 import {LoadedParsers} from './loaded_parsers';
 
 describe('LoadedParsers', () => {
@@ -264,6 +264,56 @@ describe('LoadedParsers', () => {
     it('perfetto parser', () => {
       loadParsers([], [parserSf_empty]);
       expectLoadResult([parserSf_empty], []);
+    });
+  });
+
+  describe('handles screen recordings and screenshots', () => {
+    const parserScreenRecording = new ParserBuilder<object>()
+      .setType(TraceType.SCREEN_RECORDING)
+      .setTimestamps(timestamps)
+      .setDescriptors(['screen_recording.mp4'])
+      .build();
+    const parserScreenshot = new ParserBuilder<object>()
+      .setType(TraceType.SCREENSHOT)
+      .setTimestamps(timestamps)
+      .setDescriptors(['screenshot.png'])
+      .build();
+    const overrideError = new TraceOverridden('screenshot.png', TraceType.SCREEN_RECORDING);
+
+    it('loads screenshot parser', () => {
+      loadParsers([parserScreenshot], []);
+      expectLoadResult([parserScreenshot], []);
+    });
+
+    it('loads screen recording parser', () => {
+      loadParsers([parserScreenRecording], []);
+      expectLoadResult([parserScreenRecording], []);
+    });
+
+    it('discards screenshot parser in favour of screen recording parser', () => {
+      loadParsers([parserScreenshot, parserScreenRecording], []);
+      expectLoadResult([parserScreenRecording], [overrideError]);
+    });
+
+    it('does not load screenshot parser after loading screen recording parser in same call', () => {
+      loadParsers([parserScreenRecording, parserScreenshot], []);
+      expectLoadResult([parserScreenRecording], [overrideError]);
+    });
+
+    it('does not load screenshot parser after loading screen recording parser in previous call', () => {
+      loadParsers([parserScreenRecording], []);
+      expectLoadResult([parserScreenRecording], []);
+
+      loadParsers([parserScreenshot], []);
+      expectLoadResult([parserScreenRecording], [overrideError]);
+    });
+
+    it('overrides previously loaded screenshot parser with screen recording parser', () => {
+      loadParsers([parserScreenshot], []);
+      expectLoadResult([parserScreenshot], []);
+
+      loadParsers([parserScreenRecording], []);
+      expectLoadResult([parserScreenRecording], [overrideError]);
     });
   });
 

@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-import {Cuj, Event} from 'flickerlib/common';
 import {ScreenRecordingTraceEntry} from './screen_recording';
 import {HierarchyTreeNode} from './tree_node/hierarchy_tree_node';
 import {PropertyTreeNode} from './tree_node/property_tree_node';
@@ -23,6 +22,7 @@ export enum TraceType {
   WINDOW_MANAGER,
   SURFACE_FLINGER,
   SCREEN_RECORDING,
+  SCREENSHOT,
   TRANSACTIONS,
   TRANSACTIONS_LEGACY,
   WAYLAND,
@@ -37,8 +37,6 @@ export enum TraceType {
   SHELL_TRANSITION,
   TRANSITION,
   CUJS,
-  TAG,
-  ERROR,
   TEST_TRACE_STRING,
   TEST_TRACE_NUMBER,
   VIEW_CAPTURE,
@@ -47,10 +45,21 @@ export enum TraceType {
   VIEW_CAPTURE_TASKBAR_OVERLAY_DRAG_LAYER,
 }
 
+export type ImeTraceType =
+  | TraceType.INPUT_METHOD_CLIENTS
+  | TraceType.INPUT_METHOD_MANAGER_SERVICE
+  | TraceType.INPUT_METHOD_SERVICE;
+export type ViewCaptureTraceType =
+  | TraceType.VIEW_CAPTURE
+  | TraceType.VIEW_CAPTURE_LAUNCHER_ACTIVITY
+  | TraceType.VIEW_CAPTURE_TASKBAR_DRAG_LAYER
+  | TraceType.VIEW_CAPTURE_TASKBAR_OVERLAY_DRAG_LAYER;
+
 export interface TraceEntryTypeMap {
   [TraceType.PROTO_LOG]: PropertyTreeNode;
   [TraceType.SURFACE_FLINGER]: HierarchyTreeNode;
   [TraceType.SCREEN_RECORDING]: ScreenRecordingTraceEntry;
+  [TraceType.SCREENSHOT]: ScreenRecordingTraceEntry;
   [TraceType.SYSTEM_UI]: object;
   [TraceType.TRANSACTIONS]: PropertyTreeNode;
   [TraceType.TRANSACTIONS_LEGACY]: object;
@@ -60,13 +69,11 @@ export interface TraceEntryTypeMap {
   [TraceType.INPUT_METHOD_CLIENTS]: HierarchyTreeNode;
   [TraceType.INPUT_METHOD_MANAGER_SERVICE]: HierarchyTreeNode;
   [TraceType.INPUT_METHOD_SERVICE]: HierarchyTreeNode;
-  [TraceType.EVENT_LOG]: Event;
+  [TraceType.EVENT_LOG]: PropertyTreeNode;
   [TraceType.WM_TRANSITION]: PropertyTreeNode;
   [TraceType.SHELL_TRANSITION]: PropertyTreeNode;
   [TraceType.TRANSITION]: PropertyTreeNode;
-  [TraceType.CUJS]: Cuj;
-  [TraceType.TAG]: object;
-  [TraceType.ERROR]: object;
+  [TraceType.CUJS]: PropertyTreeNode;
   [TraceType.TEST_TRACE_STRING]: string;
   [TraceType.TEST_TRACE_NUMBER]: number;
   [TraceType.VIEW_CAPTURE]: HierarchyTreeNode;

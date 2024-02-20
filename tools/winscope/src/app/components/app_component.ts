@@ -37,7 +37,6 @@ import {PersistentStore} from 'common/persistent_store';
 import {PersistentStoreProxy} from 'common/persistent_store_proxy';
 import {Timestamp} from 'common/time';
 import {CrossToolProtocol} from 'cross_tool/cross_tool_protocol';
-import {CrossPlatform, NoCache} from 'flickerlib/common';
 import {
   AppFilesCollected,
   AppFilesUploaded,
@@ -264,6 +263,10 @@ import {UploadTracesComponent} from './upload_traces_component';
         overflow-x: hidden;
         max-width: 100%;
       }
+      .upload-new {
+        flex: none;
+        width: fit-content;
+      }
       .viewers {
         height: 0;
         flex-grow: 1;
@@ -335,8 +338,6 @@ export class AppComponent implements WinscopeEventListener {
     @Inject(Title) private pageTitle: Title,
     @Inject(NgZone) private ngZone: NgZone
   ) {
-    CrossPlatform.setCache(new NoCache());
-
     this.changeDetectorRef = changeDetectorRef;
     this.snackbarOpener = snackBar;
     this.tracePipeline = new TracePipeline();
@@ -421,6 +422,12 @@ export class AppComponent implements WinscopeEventListener {
         },
         layers_dump: {
           name: 'Surface Flinger',
+          isTraceCollection: undefined,
+          run: true,
+          config: undefined,
+        },
+        screenshot: {
+          name: 'Screenshot',
           isTraceCollection: undefined,
           run: true,
           config: undefined,
