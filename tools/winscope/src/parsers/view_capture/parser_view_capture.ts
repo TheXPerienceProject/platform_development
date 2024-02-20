@@ -15,12 +15,12 @@
  */
 
 import {assertDefined} from 'common/assert_utils';
+import {ParsingUtils} from 'parsers/parsing_utils';
 import {com} from 'protos/viewcapture/latest/static';
 import {Parser} from 'trace/parser';
 import {TraceFile} from 'trace/trace_file';
 import {TraceType} from 'trace/trace_type';
 import {HierarchyTreeNode} from 'trace/tree_node/hierarchy_tree_node';
-import {ParsingUtils} from '../parsing_utils';
 import {ParserViewCaptureWindow} from './parser_view_capture_window';
 import {ExportedData} from './vc_tampered_protos';
 
@@ -31,7 +31,7 @@ export class ParserViewCapture {
 
   async parse() {
     const traceBuffer = new Uint8Array(await this.traceFile.file.arrayBuffer());
-    ParsingUtils.throwIfMagicNumberDoesntMatch(traceBuffer, ParserViewCapture.MAGIC_NUMBER);
+    ParsingUtils.throwIfMagicNumberDoesNotMatch(traceBuffer, ParserViewCapture.MAGIC_NUMBER);
 
     const exportedData = ExportedData.decode(
       traceBuffer

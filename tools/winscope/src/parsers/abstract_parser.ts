@@ -30,7 +30,6 @@ abstract class AbstractParser<T extends object = object> implements Parser<T> {
   private timestamps = new Map<TimestampType, Timestamp[]>();
   protected traceFile: TraceFile;
   protected decodedEntries: any[] = [];
-  protected shouldAddDefaultsToProto = true; // TODO(b/311643292): remove when refactoring complete
 
   protected abstract getMagicNumber(): undefined | number[];
   protected abstract decodeTrace(trace: Uint8Array): any[];
@@ -47,13 +46,8 @@ abstract class AbstractParser<T extends object = object> implements Parser<T> {
 
   async parse() {
     const traceBuffer = new Uint8Array(await this.traceFile.file.arrayBuffer());
-    ParsingUtils.throwIfMagicNumberDoesntMatch(traceBuffer, this.getMagicNumber());
-    this.decodedEntries = this.decodeTrace(traceBuffer).map((it) => {
-      if (this.shouldAddDefaultsToProto) {
-        return ParsingUtils.addDefaultProtoFields(it);
-      }
-      return it;
-    });
+    ParsingUtils.throwIfMagicNumberDoesNotMatch(traceBuffer, this.getMagicNumber());
+    this.decodedEntries = this.decodeTrace(traceBuffer);
     this.timestamps = this.decodeTimestamps();
   }
 
