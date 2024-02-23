@@ -14,7 +14,11 @@
  * limitations under the License.
  */
 import {CommonModule} from '@angular/common';
-import {ComponentFixture, ComponentFixtureAutoDetect, TestBed} from '@angular/core/testing';
+import {
+  ComponentFixture,
+  ComponentFixtureAutoDetect,
+  TestBed,
+} from '@angular/core/testing';
 import {FormsModule, ReactiveFormsModule} from '@angular/forms';
 import {MatCheckboxModule} from '@angular/material/checkbox';
 import {MatDividerModule} from '@angular/material/divider';
@@ -25,12 +29,12 @@ import {MatTooltipModule} from '@angular/material/tooltip';
 import {BrowserAnimationsModule} from '@angular/platform-browser/animations';
 import {PersistentStore} from 'common/persistent_store';
 import {TreeNodeUtils} from 'test/unit/tree_node_utils';
+import {HierarchyTreeNodeDataViewComponent} from './hierarchy_tree_node_data_view_component';
 import {PropertiesComponent} from './properties_component';
+import {PropertyTreeNodeDataViewComponent} from './property_tree_node_data_view_component';
 import {SurfaceFlingerPropertyGroupsComponent} from './surface_flinger_property_groups_component';
 import {TreeComponent} from './tree_component';
 import {TreeNodeComponent} from './tree_node_component';
-import {TreeNodeDataViewComponent} from './tree_node_data_view_component';
-import {TreeNodePropertiesDataViewComponent} from './tree_node_properties_data_view_component';
 
 describe('PropertiesComponent', () => {
   let fixture: ComponentFixture<PropertiesComponent>;
@@ -45,8 +49,8 @@ describe('PropertiesComponent', () => {
         SurfaceFlingerPropertyGroupsComponent,
         TreeComponent,
         TreeNodeComponent,
-        TreeNodeDataViewComponent,
-        TreeNodePropertiesDataViewComponent,
+        HierarchyTreeNodeDataViewComponent,
+        PropertyTreeNodeDataViewComponent,
       ],
       imports: [
         CommonModule,
@@ -117,7 +121,11 @@ describe('PropertiesComponent', () => {
   });
 
   it('renders tree in proto dump upon selected item', () => {
-    component.propertiesTree = TreeNodeUtils.makeUiPropertyNode('selectedItem', 'property', null);
+    component.propertiesTree = TreeNodeUtils.makeUiPropertyNode(
+      'selectedItem',
+      'property',
+      null,
+    );
     fixture.detectChanges();
     const treeEl = htmlElement.querySelector('tree-view');
     expect(treeEl).toBeTruthy();

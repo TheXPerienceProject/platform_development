@@ -13,7 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import {Component, ElementRef, EventEmitter, Inject, Input, Output} from '@angular/core';
+import {
+  Component,
+  ElementRef,
+  EventEmitter,
+  Inject,
+  Input,
+  Output,
+} from '@angular/core';
 import {assertDefined} from 'common/assert_utils';
 import {DiffType} from 'viewers/common/diff_type';
 import {UiHierarchyTreeNode} from 'viewers/common/ui_hierarchy_tree_node';
@@ -44,12 +51,12 @@ import {nodeInnerItemStyles} from 'viewers/components/styles/node.styles';
     </div>
 
     <div class="description">
-      <tree-node-data-view
+      <hierarchy-tree-node-data-view
         *ngIf="node && !isPropertyTreeNode()"
-        [node]="node"></tree-node-data-view>
-      <tree-node-properties-data-view
+        [node]="node"></hierarchy-tree-node-data-view>
+      <property-tree-node-data-view
         *ngIf="isPropertyTreeNode()"
-        [node]="node"></tree-node-properties-data-view>
+        [node]="node"></property-tree-node-data-view>
     </div>
 
     <div *ngIf="!isLeaf && !isExpanded" class="icon-wrapper">
@@ -78,9 +85,14 @@ export class TreeNodeComponent {
 
   collapseDiffClass = '';
   private el: HTMLElement;
+  private treeWrapper: HTMLElement | undefined;
 
   constructor(@Inject(ElementRef) public elementRef: ElementRef) {
     this.el = elementRef.nativeElement;
+  }
+
+  ngAfterViewInit() {
+    this.treeWrapper = this.getTreeWrapper();
   }
 
   ngOnChanges() {
@@ -91,13 +103,26 @@ export class TreeNodeComponent {
   }
 
   isNodeInView() {
+    if (!this.treeWrapper) {
+      return false;
+    }
     const rect = this.el.getBoundingClientRect();
-    return (
-      rect.top >= 0 &&
-      rect.left >= 0 &&
-      rect.bottom <= (window.innerHeight || document.documentElement.clientHeight) &&
-      rect.right <= (window.innerWidth || document.documentElement.clientWidth)
-    );
+    const parentRect = this.treeWrapper.getBoundingClientRect();
+    return rect.top >= parentRect.top && rect.bottom <= parentRect.bottom;
+  }
+
+  getTreeWrapper(): HTMLElement | undefined {
+    let parent = this.el;
+    while (
+      !parent.className.includes('tree-wrapper') &&
+      parent?.parentElement
+    ) {
+      parent = parent.parentElement;
+    }
+    if (!parent.className.includes('tree-wrapper')) {
+      return undefined;
+    }
+    return parent;
   }
 
   isPropertyTreeNode() {
@@ -105,7 +130,9 @@ export class TreeNodeComponent {
   }
 
   showPinNodeIcon() {
-    return (this.node instanceof UiHierarchyTreeNode && !this.node.isRoot()) ?? false;
+    return (
+      (this.node instanceof UiHierarchyTreeNode && !this.node.isRoot()) ?? false
+    );
   }
 
   toggleTree(event: MouseEvent) {
@@ -136,7 +163,9 @@ export class TreeNodeComponent {
       return '';
     }
 
-    const childrenDiffClasses = this.getAllDiffTypesOfChildren(assertDefined(this.node));
+    const childrenDiffClasses = this.getAllDiffTypesOfChildren(
+      assertDefined(this.node),
+    );
 
     childrenDiffClasses.delete(DiffType.NONE);
     childrenDiffClasses.delete(undefined);
@@ -151,7 +180,9 @@ export class TreeNodeComponent {
     return DiffType.MODIFIED;
   }
 
-  private getAllDiffTypesOfChildren(node: UiHierarchyTreeNode | UiPropertyTreeNode) {
+  private getAllDiffTypesOfChildren(
+    node: UiHierarchyTreeNode | UiPropertyTreeNode,
+  ) {
     const classes = new Set();
     for (const child of node.getAllChildren().values()) {
       classes.add(child.getDiff());
