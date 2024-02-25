@@ -16,6 +16,10 @@
 import {CdkVirtualScrollViewport} from '@angular/cdk/scrolling';
 import {Component, ElementRef, Inject, Input, ViewChild} from '@angular/core';
 import {MatSelectChange} from '@angular/material/select';
+import {PropertyTreeNode} from 'trace/tree_node/property_tree_node';
+import {currentElementStyle} from 'viewers/components/styles/current_element.styles';
+import {selectedElementStyle} from 'viewers/components/styles/selected_element.styles';
+import {timeButtonStyle} from 'viewers/components/styles/timestamp_button.styles';
 import {Events} from './events';
 import {UiData} from './ui_data';
 
@@ -56,7 +60,7 @@ import {UiData} from './ui_data';
         <div class="text">
           <mat-form-field appearance="fill" (keydown.enter)="$event.target.blur()">
             <mat-label>Search text</mat-label>
-            <input matInput [(ngModel)]="searchString" (input)="onSearchStringChange()" />
+            <input matInput name="protologTextInput" [(ngModel)]="searchString" (input)="onSearchStringChange()" />
           </mat-form-field>
         </div>
 
@@ -76,9 +80,16 @@ import {UiData} from './ui_data';
           *cdkVirtualFor="let message of uiData.messages; let i = index"
           class="message"
           [attr.item-id]="i"
-          [class.current-message]="isCurrentMessage(i)">
+          [class.current]="isCurrentMessage(i)"
+          [class.selected]="isSelectedMessage(i)"
+          (click)="onMessageClicked(i)">
           <div class="time">
-            <span class="mat-body-1">{{ message.time }}</span>
+            <button
+              mat-button
+              [color]="isCurrentMessage(i) ? 'secondary' : 'primary'"
+              (click)="onTimestampClicked(message.time)">
+              {{ message.time.formattedValue() }}
+            </button>
           </div>
           <div class="log-level">
             <span class="mat-body-1">{{ message.level }}</span>
@@ -120,11 +131,6 @@ import {UiData} from './ui_data';
         display: flex;
         flex-direction: row;
         overflow-wrap: anywhere;
-      }
-
-      .message.current-message {
-        background-color: #365179;
-        color: white;
       }
 
       .time {
@@ -175,23 +181,39 @@ import {UiData} from './ui_data';
         font-size: 12px;
       }
     `,
+    selectedElementStyle,
+    currentElementStyle,
+    timeButtonStyle,
   ],
 })
 export class ViewerProtologComponent {
   uiData: UiData = UiData.EMPTY;
 
   private searchString = '';
+  private lastClicked = '';
+  private lastSelectedMessage: undefined | number;
 
-  @ViewChild(CdkVirtualScrollViewport) scrollComponent?: CdkVirtualScrollViewport;
+  @ViewChild(CdkVirtualScrollViewport)
+  scrollComponent?: CdkVirtualScrollViewport;
 
   constructor(@Inject(ElementRef) private elementRef: ElementRef) {}
 
   @Input()
   set inputData(data: UiData) {
     this.uiData = data;
-    if (this.uiData.currentMessageIndex !== undefined && this.scrollComponent) {
+    if (
+      this.lastSelectedMessage === undefined &&
+      this.uiData.currentMessageIndex !== undefined &&
+      this.scrollComponent &&
+      this.lastClicked !==
+        this.uiData.messages[
+          this.uiData.currentMessageIndex
+        ].time.formattedValue()
+    ) {
       this.scrollComponent.scrollToIndex(this.uiData.currentMessageIndex);
     }
+
+    this.lastSelectedMessage = undefined;
   }
 
   onLogLevelsChange(event: MatSelectChange) {
@@ -216,8 +238,22 @@ export class ViewerProtologComponent {
     }
   }
 
+  onTimestampClicked(timestamp: PropertyTreeNode) {
+    this.lastClicked = timestamp.formattedValue();
+    this.emitEvent(Events.TimestampSelected, timestamp);
+  }
+
+  onMessageClicked(index: number) {
+    this.lastSelectedMessage = index;
+    this.emitEvent(Events.MessageClicked, index);
+  }
+
   isCurrentMessage(index: number): boolean {
     return index === this.uiData.currentMessageIndex;
+  }
+
+  isSelectedMessage(index: number): boolean {
+    return index === this.uiData.selectedMessageIndex;
   }
 
   private emitEvent(event: string, data: any) {
