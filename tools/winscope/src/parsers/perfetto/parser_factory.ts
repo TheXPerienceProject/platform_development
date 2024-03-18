@@ -15,23 +15,35 @@
  */
 
 import {globalConfig} from 'common/global_config';
+import {TimestampFactory} from 'common/timestamp_factory';
 import {UrlUtils} from 'common/url_utils';
 import {ProgressListener} from 'messaging/progress_listener';
 import {Parser} from 'trace/parser';
 import {TraceFile} from 'trace/trace_file';
-import {initWasm, resetEngineWorker, WasmEngineProxy} from 'trace_processor/wasm_engine_proxy';
+import {
+  initWasm,
+  resetEngineWorker,
+  WasmEngineProxy,
+} from 'trace_processor/wasm_engine_proxy';
+import {ParserProtolog} from './parser_protolog';
+import {ParserSurfaceFlinger} from './parser_surface_flinger';
 import {ParserTransactions} from './parser_transactions';
 import {ParserTransitions} from './parser_transitions';
-import {ParserSurfaceFlinger} from './surface_flinger/parser_surface_flinger';
 
 export class ParserFactory {
-  private static readonly PARSERS = [ParserSurfaceFlinger, ParserTransactions, ParserTransitions];
+  private static readonly PARSERS = [
+    ParserSurfaceFlinger,
+    ParserTransactions,
+    ParserTransitions,
+    ParserProtolog,
+  ];
   private static readonly CHUNK_SIZE_BYTES = 50 * 1024 * 1024;
   private static traceProcessor?: WasmEngineProxy;
 
   async createParsers(
     traceFile: TraceFile,
-    progressListener?: ProgressListener
+    timestampFactory: TimestampFactory,
+    progressListener?: ProgressListener,
   ): Promise<Array<Parser<object>>> {
     const traceProcessor = await this.initializeTraceProcessor();
     for (
@@ -41,10 +53,12 @@ export class ParserFactory {
     ) {
       progressListener?.onProgressUpdate(
         'Loading perfetto trace...',
-        (chunkStart / traceFile.file.size) * 100
+        (chunkStart / traceFile.file.size) * 100,
       );
       const chunkEnd = chunkStart + ParserFactory.CHUNK_SIZE_BYTES;
-      const data = await traceFile.file.slice(chunkStart, chunkEnd).arrayBuffer();
+      const data = await traceFile.file
+        .slice(chunkStart, chunkEnd)
+        .arrayBuffer();
       try {
         await traceProcessor.parse(new Uint8Array(data));
       } catch (e) {
@@ -54,11 +68,18 @@ export class ParserFactory {
     }
     await traceProcessor.notifyEof();
 
-    progressListener?.onProgressUpdate('Reading from trace processor...', undefined);
+    progressListener?.onProgressUpdate(
+      'Reading from trace processor...',
+      undefined,
+    );
     const parsers: Array<Parser<object>> = [];
     for (const ParserType of ParserFactory.PARSERS) {
       try {
-        const parser = new ParserType(traceFile, traceProcessor);
+        const parser = new ParserType(
+          traceFile,
+          traceProcessor,
+          timestampFactory,
+        );
         await parser.parse();
         parsers.push(parser);
       } catch (error) {
@@ -73,7 +94,8 @@ export class ParserFactory {
     if (!ParserFactory.traceProcessor) {
       const traceProcessorRootUrl =
         globalConfig.MODE === 'KARMA_TEST'
-          ? UrlUtils.getRootUrl() + 'base/deps_build/trace_processor/to_be_served/'
+          ? UrlUtils.getRootUrl() +
+            'base/deps_build/trace_processor/to_be_served/'
           : UrlUtils.getRootUrl();
       initWasm(traceProcessorRootUrl);
       const engineId = 'random-id';

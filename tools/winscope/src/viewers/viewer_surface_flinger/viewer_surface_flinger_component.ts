@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 import {ChangeDetectionStrategy, Component, Input} from '@angular/core';
-import {TRACE_INFO} from 'app/trace_info';
 import {PersistentStore} from 'common/persistent_store';
 import {TraceType} from 'trace/trace_type';
 import {UiData} from './ui_data';
@@ -28,9 +27,10 @@ import {UiData} from './ui_data';
         class="rects-view"
         title="Layers"
         [store]="store"
+        [isStackBased]="true"
         [rects]="inputData?.rects ?? []"
         [highlightedItem]="inputData?.highlightedItem ?? ''"
-        [displayIds]="inputData?.displayIds ?? []"></rects-view>
+        [displays]="inputData?.displays ?? []"></rects-view>
       <mat-divider [vertical]="true"></mat-divider>
       <hierarchy-view
         class="hierarchy-view"
@@ -68,9 +68,8 @@ import {UiData} from './ui_data';
   ],
 })
 export class ViewerSurfaceFlingerComponent {
-  @Input() inputData?: UiData;
-  @Input() store: PersistentStore = new PersistentStore();
+  @Input() inputData: UiData | undefined;
+  @Input() store: PersistentStore | undefined;
   @Input() active = false;
-  TRACE_INFO = TRACE_INFO;
   TraceType = TraceType;
 }

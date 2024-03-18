@@ -27,13 +27,13 @@ export class UiRect extends Rect {
     readonly isVisible: boolean,
     readonly isDisplay: boolean,
     readonly id: string,
-    readonly displayId: number,
+    readonly groupId: number,
     readonly isVirtual: boolean,
     readonly isClickable: boolean,
     readonly cornerRadius: number,
     readonly transform: TransformMatrix | undefined,
-    readonly depth: number | undefined,
-    readonly hasContent: boolean | undefined
+    readonly depth: number,
+    readonly hasContent: boolean | undefined,
   ) {
     super(x, y, w, h);
   }

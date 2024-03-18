@@ -29,7 +29,7 @@ import {nodeStyles} from 'viewers/components/styles/node.styles';
     <div class="view-header">
       <div class="title-filter">
         <h2 class="hierarchy-title mat-title">Hierarchy</h2>
-        <mat-form-field>
+        <mat-form-field (keydown.enter)="$event.target.blur()">
           <mat-label>Filter...</mat-label>
           <input
             matInput
@@ -68,7 +68,7 @@ import {nodeStyles} from 'viewers/components/styles/node.styles';
       </div>
     </div>
     <mat-divider></mat-divider>
-    <div class="hierarchy-content">
+    <div class="hierarchy-content tree-wrapper">
       <tree-view
         *ngIf="tree"
         [isFlattened]="isFlattened()"
@@ -82,6 +82,24 @@ import {nodeStyles} from 'viewers/components/styles/node.styles';
         (highlightedChange)="onHighlightedItemChange($event)"
         (pinnedItemChange)="onPinnedItemChange($event)"
         (selectedTreeChange)="onSelectedTreeChange($event)"></tree-view>
+
+      <div class="children">
+        <tree-view
+          *ngFor="let subtree of subtrees; trackBy: trackById"
+          class="childrenTree"
+          [node]="subtree"
+          [store]="store"
+          [dependencies]="dependencies"
+          [isFlattened]="isFlattened()"
+          [useStoredExpandedState]="true"
+          [initialDepth]="1"
+          [highlightedItem]="highlightedItem"
+          [pinnedItems]="pinnedItems"
+          [itemsClickable]="true"
+          (highlightedChange)="onHighlightedItemChange($event)"
+          (pinnedItemChange)="onPinnedItemChange($event)"
+          (selectedTreeChange)="onSelectedTreeChange($event)"></tree-view>
+      </div>
     </div>
   `,
   styles: [
@@ -134,14 +152,19 @@ export class HierarchyComponent {
   isHighlighted = UiTreeUtils.isHighlighted;
 
   @Input() tree: UiHierarchyTreeNode | undefined;
+  @Input() subtrees: UiHierarchyTreeNode[] = [];
   @Input() tableProperties: TableProperties | undefined;
   @Input() dependencies: TraceType[] = [];
-  @Input() highlightedItem: string = '';
+  @Input() highlightedItem = '';
   @Input() pinnedItems: UiHierarchyTreeNode[] = [];
   @Input() store: PersistentStore | undefined;
   @Input() userOptions: UserOptions = {};
 
   constructor(@Inject(ElementRef) private elementRef: ElementRef) {}
+
+  trackById(index: number, child: UiHierarchyTreeNode): string {
+    return child.id;
+  }
 
   isFlattened() {
     return this.userOptions['flat']?.enabled;
@@ -157,7 +180,7 @@ export class HierarchyComponent {
   }
 
   onUserOptionChange() {
-    const event: CustomEvent = new CustomEvent(ViewerEvents.HierarchyUserOptionsChange, {
+    const event = new CustomEvent(ViewerEvents.HierarchyUserOptionsChange, {
       bubbles: true,
       detail: {userOptions: this.userOptions},
     });
@@ -165,7 +188,7 @@ export class HierarchyComponent {
   }
 
   onFilterChange() {
-    const event: CustomEvent = new CustomEvent(ViewerEvents.HierarchyFilterChange, {
+    const event = new CustomEvent(ViewerEvents.HierarchyFilterChange, {
       bubbles: true,
       detail: {filterString: this.filterString},
     });
@@ -173,7 +196,7 @@ export class HierarchyComponent {
   }
 
   onHighlightedItemChange(newId: string) {
-    const event: CustomEvent = new CustomEvent(ViewerEvents.HighlightedChange, {
+    const event = new CustomEvent(ViewerEvents.HighlightedChange, {
       bubbles: true,
       detail: {id: newId},
     });
@@ -181,7 +204,7 @@ export class HierarchyComponent {
   }
 
   onSelectedTreeChange(item: UiHierarchyTreeNode) {
-    const event: CustomEvent = new CustomEvent(ViewerEvents.SelectedTreeChange, {
+    const event = new CustomEvent(ViewerEvents.SelectedTreeChange, {
       bubbles: true,
       detail: {selectedItem: item},
     });
@@ -189,7 +212,7 @@ export class HierarchyComponent {
   }
 
   onPinnedItemChange(item: UiHierarchyTreeNode) {
-    const event: CustomEvent = new CustomEvent(ViewerEvents.HierarchyPinnedChange, {
+    const event = new CustomEvent(ViewerEvents.HierarchyPinnedChange, {
       bubbles: true,
       detail: {pinnedItem: item},
     });

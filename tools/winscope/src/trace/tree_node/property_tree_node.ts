@@ -25,13 +25,9 @@ export class PropertyTreeNode extends TreeNode {
     id: string,
     name: string,
     readonly source: PropertySource,
-    protected readonly value: any
+    protected readonly value: any,
   ) {
     super(id, name);
-  }
-
-  getChildByName(name: string): this | undefined {
-    return this.children.find((child) => child.name === name);
   }
 
   getValue(): any {

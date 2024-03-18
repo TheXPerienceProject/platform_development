@@ -15,133 +15,62 @@
  */
 
 import {assertDefined} from 'common/assert_utils';
+import {HierarchyTreeBuilder} from 'parsers/hierarchy_tree_builder';
 import {HierarchyTreeNode} from 'trace/tree_node/hierarchy_tree_node';
-import {HierarchyTreeNodeBuilder} from 'trace/tree_node/hierarchy_tree_node_builder';
 import {PropertiesProvider} from 'trace/tree_node/properties_provider';
 import {PropertyTreeNode} from 'trace/tree_node/property_tree_node';
-import {PropertyTreeNodeFactory} from 'trace/tree_node/property_tree_node_factory';
-import {RectsComputation} from './computations/rects_computation';
-import {VisibilityPropertiesComputation} from './computations/visibility_properties_computation';
-import {ZOrderPathsComputation} from './computations/z_order_paths_computation';
+import {DEFAULT_PROPERTY_TREE_NODE_FACTORY} from 'trace/tree_node/property_tree_node_factory';
 
-export class HierarchyTreeBuilderSf {
-  private processed = new Map<number, number>();
-  private entry: PropertiesProvider | undefined;
-  private layers: PropertiesProvider[] | undefined;
-  private excludesCompositionState: boolean = false;
-
-  setEntry(value: PropertiesProvider): this {
-    this.entry = value;
-    return this;
-  }
-
-  setLayers(value: PropertiesProvider[]): this {
-    this.layers = value;
-    return this;
-  }
-
-  setExcludesCompositionState(value: boolean): this {
-    this.excludesCompositionState = value;
-    return this;
-  }
-
-  build(): HierarchyTreeNode {
-    if (!this.entry) {
-      throw Error('entry not set');
-    }
-    if (!this.layers) {
-      throw Error('layers not set');
-    }
-
-    const idToLayer = this.buildIdToLayerMap(this.layers);
-    const rootLayers = this.findRootLayers(this.layers);
-
-    const rootChildren = rootLayers.map((layer) => {
-      return this.buildSubtree(layer, this.excludesCompositionState, idToLayer);
-    });
-
-    const root = new HierarchyTreeNodeBuilder()
-      .setId('LayerTraceEntry')
-      .setName('root')
-      .setPropertiesProvider(this.entry)
-      .setChildren(rootChildren)
-      .build();
-
-    const rootWithZOrderPaths = new ZOrderPathsComputation().setRoot(root).execute();
-
-    const displays = root.getEagerPropertyByName('displays')?.getAllChildren() ?? [];
-
-    const rootWithVisibility = new VisibilityPropertiesComputation()
-      .setRoot(rootWithZOrderPaths)
-      .setDisplays(displays)
-      .execute();
-
-    const finalRoot = new RectsComputation()
-      .setHierarchyRoot(rootWithVisibility)
-      .setDisplays(displays)
-      .execute();
-
-    return finalRoot;
-  }
-
-  private buildIdToLayerMap(layers: PropertiesProvider[]): Map<number, PropertiesProvider[]> {
+export class HierarchyTreeBuilderSf extends HierarchyTreeBuilder {
+  protected override buildIdentifierToChildMap(
+    layers: PropertiesProvider[],
+  ): Map<string | number, PropertiesProvider[]> {
     const map = layers.reduce((map, layer) => {
       const layerProperties = layer.getEagerProperties();
       const id = assertDefined(layerProperties.getChildByName('id')).getValue();
       const curr = map.get(id);
       if (curr) {
         curr.push(layer);
-        console.warn(`Duplicate layer id ${id} found. Adding it as duplicate to the hierarchy`);
+        console.warn(
+          `Duplicate layer id ${id} found. Adding it as duplicate to the hierarchy`,
+        );
         layer.addEagerProperty(
-          new PropertyTreeNodeFactory().makeCalculatedProperty(
+          DEFAULT_PROPERTY_TREE_NODE_FACTORY.makeCalculatedProperty(
             layerProperties.id,
             'isDuplicate',
-            true
-          )
+            true,
+          ),
         );
       } else {
         map.set(id, [layer]);
       }
       return map;
-    }, new Map<number, PropertiesProvider[]>());
+    }, new Map<string | number, PropertiesProvider[]>());
     return map;
   }
 
-  private findRootLayers(layers: PropertiesProvider[]): PropertiesProvider[] {
-    return layers.filter((layer) => {
+  protected override makeRootChildren(
+    children: PropertiesProvider[],
+    identifierToChild: Map<string | number, PropertiesProvider[]>,
+  ): readonly HierarchyTreeNode[] {
+    const rootLayers = children.filter((layer) => {
       const hasParent =
-        assertDefined(layer.getEagerProperties().getChildByName('parent')).getValue() !== -1;
+        assertDefined(
+          layer.getEagerProperties().getChildByName('parent'),
+        ).getValue() !== -1;
       return !hasParent;
+    });
+
+    return rootLayers.map((layer) => {
+      return this.buildSubtree(layer, identifierToChild);
     });
   }
 
-  private buildSubtree(
-    layer: PropertiesProvider,
-    excludesCompositionState: boolean,
-    idToLayer: Map<number, PropertiesProvider[]>
-  ): HierarchyTreeNode {
-    const eagerProperties = layer.getEagerProperties();
-    const id = assertDefined(eagerProperties.getChildByName('id')).getValue();
-    const name = assertDefined(eagerProperties.getChildByName('name')).getValue();
-    const duplicateCount = this.processed.get(id) ?? 0;
-    this.processed.set(id, duplicateCount + 1);
+  protected override getIdentifierValue(identifier: PropertyTreeNode): number {
+    return Number(identifier.getValue());
+  }
 
-    const childIds = assertDefined(eagerProperties.getChildByName('children')).getAllChildren();
-
-    const children: HierarchyTreeNode[] = [];
-    childIds.forEach((childId: PropertyTreeNode) => {
-      const numberId = Number(childId.getValue());
-      assertDefined(idToLayer.get(numberId)).forEach((childLayer) => {
-        children.push(this.buildSubtree(childLayer, excludesCompositionState, idToLayer));
-      });
-    });
-
-    return new HierarchyTreeNodeBuilder()
-      .setId(id)
-      .setName(name)
-      .setDuplicateCount(duplicateCount)
-      .setPropertiesProvider(layer)
-      .setChildren(children)
-      .build();
+  protected override getSubtreeName(propertyTreeName: string): string {
+    return propertyTreeName;
   }
 }

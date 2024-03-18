@@ -13,9 +13,20 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-import {Component, ElementRef, HostListener, Inject, Input, OnDestroy, OnInit} from '@angular/core';
+import {
+  Component,
+  ElementRef,
+  HostListener,
+  Inject,
+  Input,
+  OnDestroy,
+  OnInit,
+  SimpleChanges,
+} from '@angular/core';
 import {assertDefined} from 'common/assert_utils';
 import {PersistentStore} from 'common/persistent_store';
+import {DisplayLayerStack} from 'trace/display_layer_stack';
+import {DisplayIdentifier} from 'viewers/common/display_identifier';
 import {RectDblClickDetail, ViewerEvents} from 'viewers/common/viewer_events';
 import {UiRect} from 'viewers/components/rects/types2d';
 import {Canvas} from './canvas';
@@ -34,15 +45,6 @@ import {Distance2D} from './types3d';
           [checked]="getShowOnlyVisibleMode()"
           (change)="onShowOnlyVisibleModeChange($event.checked!)"
           >Only visible
-        </mat-checkbox>
-        <mat-checkbox
-          *ngIf="enableShowVirtualButton"
-          color="primary"
-          class="show-virtual"
-          [disabled]="getShowOnlyVisibleMode()"
-          [checked]="getShowVirtualMode()"
-          (change)="onShowVirtualModeChange($event.checked!)"
-          >Show virtual
         </mat-checkbox>
         <div class="right-btn-container">
           <button color="primary" mat-icon-button (click)="onZoomInClick()">
@@ -101,15 +103,36 @@ import {Distance2D} from './types3d';
           (dblclick)="onMiniRectDblClick($event)"
           oncontextmenu="return false"></canvas>
       </div>
-      <div *ngIf="internalDisplayIds.length > 1" class="display-button-container">
-        <button
-          *ngFor="let displayId of internalDisplayIds"
-          color="primary"
-          mat-raised-button
-          (click)="onDisplayIdChange(displayId)">
-          {{ displayId }}
-        </button>
-      </div>
+
+      <mat-tab-group
+        class="grouping-tabs"
+        mat-align-tabs="start"
+        *ngIf="internalDisplays.length > 0"
+        dynamicHeight>
+        <mat-tab label="Displays">
+          <div class="display-button-container display-name-buttons">
+            <button
+              *ngFor="let display of internalDisplays"
+              [color]="getDisplayButtonColor(display.groupId)"
+              mat-raised-button
+              (click)="onDisplayIdChange(display)">
+              {{ display.name }}
+            </button>
+          </div>
+        </mat-tab>
+        <mat-tab *ngIf="isStackBased" label="Stacks">
+          <div class="display-button-container stack-buttons">
+            <button
+              *ngFor="let groupId of internalGroupIds"
+              [color]="getStackButtonColor(groupId)"
+              [matTooltip]="getStackButtonTooltip(groupId)"
+              mat-raised-button
+              (click)="onGroupIdChange(groupId)">
+              {{ getStackButtonLabel(groupId) }}
+            </button>
+          </div>
+        </mat-tab>
+      </mat-tab-group>
     </div>
   `,
   styles: [
@@ -167,11 +190,23 @@ import {Distance2D} from './types3d';
         height: 100%;
         pointer-events: none;
       }
+      .grouping-tabs {
+        max-height: 120px;
+      }
       .display-button-container {
         display: flex;
         flex-direction: row;
         flex-wrap: wrap;
         column-gap: 10px;
+        padding-bottom: 5px;
+        max-height: 72px;
+        overflow-y: auto;
+      }
+      .display-button-container button {
+        font-size: 12px;
+        line-height: normal;
+        height: 28px;
+        margin-top: 5px;
       }
       .mini-rects-canvas {
         cursor: pointer;
@@ -187,41 +222,23 @@ import {Distance2D} from './types3d';
 })
 export class RectsComponent implements OnInit, OnDestroy {
   @Input() title = 'title';
-  @Input() enableShowVirtualButton: boolean = true;
-  @Input() zoomFactor: number = 1;
+  @Input() zoomFactor = 1;
   @Input() store?: PersistentStore;
+  @Input() isStackBased = false;
+  @Input() rects: UiRect[] = [];
+  @Input() miniRects: UiRect[] | undefined;
+  @Input() displays: DisplayIdentifier[] = [];
+  @Input() highlightedItem = '';
 
-  @Input() set rects(rects: UiRect[]) {
-    this.internalRects = rects;
-    this.drawLargeRectsAndLabels();
-  }
-
-  @Input() set miniRects(rects: UiRect[] | undefined) {
-    this.internalMiniRects = rects;
-    this.drawMiniRects();
-  }
-
-  @Input() set displayIds(ids: number[]) {
-    this.internalDisplayIds = ids;
-    if (!this.internalDisplayIds.includes(this.mapper3d.getCurrentDisplayId())) {
-      this.mapper3d.setCurrentDisplayId(this.internalDisplayIds[0]);
-      this.drawLargeRectsAndLabels();
-    }
-  }
-
-  @Input() set highlightedItem(stableId: string) {
-    this.internalHighlightedItem = stableId;
-    this.mapper3d.setHighlightedRectId(this.internalHighlightedItem);
-    this.drawLargeRectsAndLabels();
-  }
-
+  private stackSelected = false;
   private internalRects: UiRect[] = [];
   private internalMiniRects?: UiRect[];
-  private internalDisplayIds: number[] = [];
-  private internalHighlightedItem = '';
   private storeKeyShowOnlyVisibleState = '';
-  private storeKeyShowVirtualState = '';
   private storeKeyZSpacingFactor = '';
+  private internalDisplays: DisplayIdentifier[] = [];
+  private internalGroupIds = new Set<number>();
+  private internalHighlightedItem = '';
+  private currentDisplay: DisplayIdentifier | undefined;
   private mapper3d: Mapper3D;
   private largeRectsCanvas?: Canvas;
   private miniRectsCanvas?: Canvas;
@@ -240,31 +257,67 @@ export class RectsComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit() {
-    const canvasContainer = this.elementRef.nativeElement.querySelector('.canvas-container');
+    const canvasContainer =
+      this.elementRef.nativeElement.querySelector('.canvas-container');
     this.resizeObserver.observe(canvasContainer);
 
     this.largeRectsCanvasElement = canvasContainer.querySelector(
-      '.large-rects-canvas'
+      '.large-rects-canvas',
     )! as HTMLCanvasElement;
-    this.largeRectsLabelsElement = canvasContainer.querySelector('.large-rects-labels');
-    this.largeRectsCanvas = new Canvas(this.largeRectsCanvasElement, this.largeRectsLabelsElement!);
+    this.largeRectsLabelsElement = canvasContainer.querySelector(
+      '.large-rects-labels',
+    );
+    this.largeRectsCanvas = new Canvas(
+      this.largeRectsCanvasElement,
+      this.largeRectsLabelsElement!,
+    );
     this.largeRectsCanvasElement.addEventListener('mousedown', (event) =>
-      this.onCanvasMouseDown(event)
+      this.onCanvasMouseDown(event),
     );
 
     if (this.store) {
       this.updateControlsFromStore();
     }
 
-    this.mapper3d.setCurrentDisplayId(this.internalDisplayIds[0] ?? 0);
+    this.currentDisplay = this.internalDisplays[0] ?? undefined;
+    this.mapper3d.setCurrentGroupId(this.currentDisplay?.groupId ?? 0);
     this.mapper3d.increaseZoomFactor(this.zoomFactor - 1);
     this.drawLargeRectsAndLabels();
 
     this.miniRectsCanvasElement = canvasContainer.querySelector(
-      '.mini-rects-canvas'
+      '.mini-rects-canvas',
     )! as HTMLCanvasElement;
     this.miniRectsCanvas = new Canvas(this.miniRectsCanvasElement);
     if (this.miniRects) {
+      this.drawMiniRects();
+    }
+  }
+
+  ngOnChanges(simpleChanges: SimpleChanges) {
+    if (simpleChanges['highlightedItem']) {
+      this.internalHighlightedItem =
+        simpleChanges['highlightedItem'].currentValue;
+      this.mapper3d.setHighlightedRectId(this.internalHighlightedItem);
+      if (!(simpleChanges['rects'] || simpleChanges['displays'])) {
+        this.drawLargeRectsAndLabels();
+      }
+    }
+    if (simpleChanges['rects']) {
+      this.internalRects = simpleChanges['rects'].currentValue;
+      if (!simpleChanges['displays']) {
+        this.drawLargeRectsAndLabels();
+      }
+    }
+    if (simpleChanges['displays']) {
+      this.onDisplaysChange(simpleChanges['displays'].currentValue);
+      if (this.isStackBased) {
+        this.internalGroupIds = new Set(
+          this.internalDisplays.map((display) => display.groupId),
+        );
+      }
+    }
+    if (simpleChanges['miniRects']) {
+      this.internalMiniRects = simpleChanges['miniRects'].currentValue;
       this.drawMiniRects();
     }
   }
@@ -273,18 +326,60 @@ export class RectsComponent implements OnInit, OnDestroy {
     this.resizeObserver?.disconnect();
   }
 
+  onDisplaysChange(displays: DisplayIdentifier[]) {
+    this.internalDisplays = displays;
+
+    if (displays.length === 0) {
+      return;
+    }
+
+    if (!this.stackSelected) {
+      const curr = this.internalDisplays.find(
+        (display) => display.displayId === this.currentDisplay?.displayId,
+      );
+      if (curr) {
+        this.updateCurrentDisplay(curr);
+        return;
+      }
+    }
+
+    const firstDisplayWithCurrentGroupId = this.internalDisplays.find(
+      (display) => display.groupId === this.mapper3d.getCurrentGroupId(),
+    );
+    if (!firstDisplayWithCurrentGroupId) {
+      this.updateCurrentDisplay(this.internalDisplays[0]);
+      return;
+    }
+
+    const displayWithCurrentDisplayId = this.internalDisplays.find(
+      (display) => display.displayId === this.currentDisplay?.displayId,
+    );
+    if (!displayWithCurrentDisplayId) {
+      this.updateCurrentDisplay(firstDisplayWithCurrentGroupId);
+      return;
+    }
+
+    if (
+      displayWithCurrentDisplayId.groupId !== this.mapper3d.getCurrentGroupId()
+    ) {
+      this.updateCurrentDisplay(displayWithCurrentDisplayId);
+      return;
+    }
+  }
+
   updateControlsFromStore() {
     this.storeKeyShowOnlyVisibleState = `rectsView.${this.title}.showOnlyVisibleState`;
-    this.storeKeyShowVirtualState = `rectsView.${this.title}.showVirtualState`;
     this.storeKeyZSpacingFactor = `rectsView.${this.title}.zSpacingFactor`;
 
-    if (assertDefined(this.store).get(this.storeKeyShowOnlyVisibleState) === 'true') {
+    if (
+      assertDefined(this.store).get(this.storeKeyShowOnlyVisibleState) ===
+      'true'
+    ) {
       this.mapper3d.setShowOnlyVisibleMode(true);
     }
-    if (assertDefined(this.store).get(this.storeKeyShowVirtualState) === 'true') {
-      this.mapper3d.setShowVirtualMode(true);
-    }
-    const storedZSpacingFactor = assertDefined(this.store).get(this.storeKeyZSpacingFactor);
+    const storedZSpacingFactor = assertDefined(this.store).get(
+      this.storeKeyZSpacingFactor,
+    );
     if (storedZSpacingFactor !== undefined) {
       this.mapper3d.setZSpacingFactor(Number(storedZSpacingFactor));
     }
@@ -309,10 +404,12 @@ export class RectsComponent implements OnInit, OnDestroy {
 
   @HostListener('wheel', ['$event'])
   onScroll(event: WheelEvent) {
-    if (event.deltaY > 0) {
-      this.doZoomOut();
-    } else {
-      this.doZoomIn();
+    if ((event.target as HTMLElement).className === 'large-rects-canvas') {
+      if (event.deltaY > 0) {
+        this.doZoomOut();
+      } else {
+        this.doZoomIn();
+      }
     }
   }
 
@@ -346,15 +443,47 @@ export class RectsComponent implements OnInit, OnDestroy {
     this.drawLargeRectsAndLabels();
   }
 
-  onShowVirtualModeChange(enabled: boolean) {
-    this.store?.add(this.storeKeyShowVirtualState, `${enabled}`);
-    this.mapper3d.setShowVirtualMode(enabled);
-    this.drawLargeRectsAndLabels();
+  onDisplayIdChange(display: DisplayIdentifier) {
+    this.stackSelected = false;
+    this.updateCurrentDisplay(display);
   }
 
-  onDisplayIdChange(id: number) {
-    this.mapper3d.setCurrentDisplayId(id);
-    this.drawLargeRectsAndLabels();
+  onGroupIdChange(groupId: number) {
+    this.stackSelected = true;
+    const displaysWithGroupId = this.getDisplaysWithGroupId(groupId);
+    if (
+      this.currentDisplay &&
+      displaysWithGroupId.length > 0 &&
+      !displaysWithGroupId.includes(this.currentDisplay)
+    ) {
+      this.updateCurrentDisplay(displaysWithGroupId[0]);
+    }
+  }
+
+  getDisplayButtonColor(groupId: number): string {
+    if (this.stackSelected) return 'secondary';
+    return this.getButtonColor(groupId);
+  }
+
+  getStackButtonColor(groupId: number): string {
+    if (!this.stackSelected) return 'secondary';
+    return this.getButtonColor(groupId);
+  }
+
+  getStackButtonTooltip(groupId: number): string {
+    if (groupId === DisplayLayerStack.INVALID_LAYER_STACK) {
+      return 'Invalid layer stack - associated displays off';
+    }
+    return 'Associated displays on';
+  }
+
+  getStackButtonLabel(groupId: number): string {
+    return (
+      `Stack ${groupId}: ` +
+      this.getDisplaysWithGroupId(groupId)
+        .map((display) => display.name)
+        .join(', ')
+    );
   }
 
   onRectClick(event: MouseEvent) {
@@ -378,7 +507,7 @@ export class RectsComponent implements OnInit, OnDestroy {
       new CustomEvent(ViewerEvents.RectsDblClick, {
         bubbles: true,
         detail: new RectDblClickDetail(clickedRectId),
-      })
+      }),
     );
   }
 
@@ -386,7 +515,7 @@ export class RectsComponent implements OnInit, OnDestroy {
     event.preventDefault();
 
     this.elementRef.nativeElement.dispatchEvent(
-      new CustomEvent(ViewerEvents.MiniRectsDblClick, {bubbles: true})
+      new CustomEvent(ViewerEvents.MiniRectsDblClick, {bubbles: true}),
     );
   }
 
@@ -394,20 +523,35 @@ export class RectsComponent implements OnInit, OnDestroy {
     return this.mapper3d.getShowOnlyVisibleMode();
   }
 
-  getShowVirtualMode(): boolean {
-    return this.mapper3d.getShowVirtualMode();
-  }
-
   getZSpacingFactor(): number {
     return this.mapper3d.getZSpacingFactor();
+  }
+
+  private getButtonColor(groupId: number) {
+    if (!this.currentDisplay) return 'primary';
+    return this.currentDisplay.groupId === groupId ? 'primary' : 'secondary';
+  }
+
+  private updateCurrentDisplay(display: DisplayIdentifier) {
+    this.currentDisplay = display;
+    this.mapper3d.setCurrentGroupId(display.groupId);
+    this.drawLargeRectsAndLabels();
+  }
+
+  private getDisplaysWithGroupId(groupId: number): DisplayIdentifier[] {
+    return assertDefined(
+      this.internalDisplays.filter((display) => display.groupId === groupId),
+    );
   }
 
   private findClickedRectId(event: MouseEvent): string | undefined {
     const canvas = event.target as Element;
     const canvasOffset = canvas.getBoundingClientRect();
 
-    const x = ((event.clientX - canvasOffset.left) / canvas.clientWidth) * 2 - 1;
-    const y = -((event.clientY - canvasOffset.top) / canvas.clientHeight) * 2 + 1;
+    const x =
+      ((event.clientX - canvasOffset.left) / canvas.clientWidth) * 2 - 1;
+    const y =
+      -((event.clientY - canvasOffset.top) / canvas.clientHeight) * 2 + 1;
     const z = 0;
 
     return this.largeRectsCanvas?.getClickedRectId(x, y, z);

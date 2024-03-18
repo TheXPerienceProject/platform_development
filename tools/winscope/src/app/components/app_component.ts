@@ -32,10 +32,11 @@ import {TimelineData} from 'app/timeline_data';
 import {TRACE_INFO} from 'app/trace_info';
 import {TracePipeline} from 'app/trace_pipeline';
 import {FileUtils} from 'common/file_utils';
+import {globalConfig} from 'common/global_config';
 import {PersistentStore} from 'common/persistent_store';
+import {PersistentStoreProxy} from 'common/persistent_store_proxy';
 import {Timestamp} from 'common/time';
 import {CrossToolProtocol} from 'cross_tool/cross_tool_protocol';
-import {CrossPlatform, NoCache} from 'flickerlib/common';
 import {
   AppFilesCollected,
   AppFilesUploaded,
@@ -46,9 +47,14 @@ import {
   WinscopeEventType,
 } from 'messaging/winscope_event';
 import {WinscopeEventListener} from 'messaging/winscope_event_listener';
+import {MockStorage} from 'test/unit/mock_storage';
 import {Trace} from 'trace/trace';
 import {TraceType} from 'trace/trace_type';
 import {proxyClient, ProxyState} from 'trace_collection/proxy_client';
+import {
+  TraceConfigurationMap,
+  TRACES,
+} from 'trace_collection/trace_collection_utils';
 import {ViewerInputMethodComponent} from 'viewers/components/viewer_input_method_component';
 import {View, Viewer} from 'viewers/viewer';
 import {ViewerProtologComponent} from 'viewers/viewer_protolog/viewer_protolog_component';
@@ -68,7 +74,7 @@ import {UploadTracesComponent} from './upload_traces_component';
   selector: 'app-root',
   template: `
     <mat-toolbar class="toolbar">
-      <div class="horizontal-align vertical-align">
+      <div class="horizontal-align vertical-align fixed">
         <span class="app-title">Winscope</span>
         <div *ngIf="showDataLoadedElements" class="file-descriptor vertical-align">
           <span *ngIf="!isEditingFilename" class="download-file-info mat-body-2">
@@ -113,28 +119,45 @@ import {UploadTracesComponent} from './upload_traces_component';
       </div>
 
       <div class="horizontal-align vertical-align active" *ngIf="showDataLoadedElements">
-        <mat-icon
+        <button
           *ngIf="activeTrace"
-          class="icon"
-          [matTooltip]="TRACE_INFO[activeTrace.type].name"
-          [style]="{color: TRACE_INFO[activeTrace.type].color, marginRight: '0.5rem'}">
-          {{ TRACE_INFO[activeTrace.type].icon }}
-        </mat-icon>
+          mat-icon-button
+          [disabled]="true">
+          <mat-icon
+            class="icon"
+            [matTooltip]="TRACE_INFO[activeTrace.type].name"
+            [style]="{color: TRACE_INFO[activeTrace.type].color}">
+            {{ TRACE_INFO[activeTrace.type].icon }}
+          </mat-icon>
+        </button>
         <span class="trace-file-info mat-body-2" [matTooltip]="activeTraceFileInfo">
           {{ activeTraceFileInfo }}
         </span>
       </div>
 
-      <div class="horizontal-align vertical-align">
+      <div class="horizontal-align vertical-align fixed">
         <button
           *ngIf="showDataLoadedElements"
           color="primary"
           mat-stroked-button
+          class="upload-new"
           (click)="onUploadNewButtonClick()">
           Upload New
         </button>
+
         <button
           mat-icon-button
+          matTooltip="Documentation"
+          class="documentation"
+          (click)="
+            goToLink('https://source.android.com/docs/core/graphics/tracing-win-transitions')
+          ">
+          <mat-icon>help</mat-icon>
+        </button>
+
+        <button
+          mat-icon-button
+          class="report-bug"
           matTooltip="Report bug"
           (click)="goToLink('https://b.corp.google.com/issues/new?component=909476')">
           <mat-icon>bug_report</mat-icon>
@@ -142,6 +165,7 @@ import {UploadTracesComponent} from './upload_traces_component';
 
         <button
           mat-icon-button
+          class="dark-mode"
           matTooltip="Switch to {{ isDarkModeOn ? 'light' : 'dark' }} mode"
           (click)="setDarkMode(!isDarkModeOn)">
           <mat-icon>
@@ -182,8 +206,10 @@ import {UploadTracesComponent} from './upload_traces_component';
           <div class="card-grid landing-grid">
             <collect-traces
               class="collect-traces-card homepage-card"
-              (filesCollected)="onFilesCollected($event)"
-              [store]="store"></collect-traces>
+              [traceConfig]="traceConfig"
+              [dumpConfig]="dumpConfig"
+              [storage]="traceConfigStorage"
+              (filesCollected)="onFilesCollected($event)"></collect-traces>
 
             <upload-traces
               class="upload-traces-card homepage-card"
@@ -200,6 +226,7 @@ import {UploadTracesComponent} from './upload_traces_component';
       .toolbar {
         gap: 10px;
         justify-content: space-between;
+        min-height: 64px;
       }
       .welcome-info {
         margin: 16px 0 6px 0;
@@ -225,6 +252,9 @@ import {UploadTracesComponent} from './upload_traces_component';
         align-items: center;
         overflow-x: hidden;
         display: flex;
+      }
+      .fixed {
+        min-width: fit-content;
       }
       .download-file-info {
         text-overflow: ellipsis;
@@ -284,7 +314,7 @@ export class AppComponent implements WinscopeEventListener {
   collapsedTimelineHeight = 0;
   TRACE_INFO = TRACE_INFO;
   isEditingFilename = false;
-  store: PersistentStore = new PersistentStore();
+  store = new PersistentStore();
   viewers: Viewer[] = [];
 
   isDarkModeOn!: boolean;
@@ -295,13 +325,21 @@ export class AppComponent implements WinscopeEventListener {
   currentTimestamp?: Timestamp;
   activeView?: View;
   activeTrace?: Trace<object>;
-  filenameFormControl: FormControl = new FormControl(
+  filenameFormControl = new FormControl(
     'winscope',
-    Validators.compose([Validators.required, Validators.pattern(FileUtils.DOWNLOAD_FILENAME_REGEX)])
+    Validators.compose([
+      Validators.required,
+      Validators.pattern(FileUtils.DOWNLOAD_FILENAME_REGEX),
+    ]),
   );
+  traceConfig: TraceConfigurationMap;
+  dumpConfig: TraceConfigurationMap;
+  traceConfigStorage: Storage;
 
-  @ViewChild(UploadTracesComponent) uploadTracesComponent?: UploadTracesComponent;
-  @ViewChild(CollectTracesComponent) collectTracesComponent?: UploadTracesComponent;
+  @ViewChild(UploadTracesComponent)
+  uploadTracesComponent?: UploadTracesComponent;
+  @ViewChild(CollectTracesComponent)
+  collectTracesComponent?: UploadTracesComponent;
   @ViewChild(TraceViewComponent) traceViewComponent?: TraceViewComponent;
   @ViewChild(TimelineComponent) timelineComponent?: TimelineComponent;
 
@@ -310,10 +348,8 @@ export class AppComponent implements WinscopeEventListener {
     @Inject(ChangeDetectorRef) changeDetectorRef: ChangeDetectorRef,
     @Inject(SnackBarOpener) snackBar: SnackBarOpener,
     @Inject(Title) private pageTitle: Title,
-    @Inject(NgZone) private ngZone: NgZone
+    @Inject(NgZone) private ngZone: NgZone,
   ) {
-    CrossPlatform.setCache(new NoCache());
-
     this.changeDetectorRef = changeDetectorRef;
     this.snackbarOpener = snackBar;
     this.tracePipeline = new TracePipeline();
@@ -324,61 +360,98 @@ export class AppComponent implements WinscopeEventListener {
       this.crossToolProtocol,
       this,
       this.snackbarOpener,
-      localStorage
+      localStorage,
     );
 
     const storeDarkMode = this.store.get('dark-mode');
-    const prefersDarkQuery = window.matchMedia?.('(prefers-color-scheme: dark)');
-    this.setDarkMode(storeDarkMode ? storeDarkMode === 'true' : prefersDarkQuery.matches);
+    const prefersDarkQuery = window.matchMedia?.(
+      '(prefers-color-scheme: dark)',
+    );
+    this.setDarkMode(
+      storeDarkMode ? storeDarkMode === 'true' : prefersDarkQuery.matches,
+    );
 
     if (!customElements.get('viewer-input-method')) {
       customElements.define(
         'viewer-input-method',
-        createCustomElement(ViewerInputMethodComponent, {injector})
+        createCustomElement(ViewerInputMethodComponent, {injector}),
       );
     }
     if (!customElements.get('viewer-protolog')) {
       customElements.define(
         'viewer-protolog',
-        createCustomElement(ViewerProtologComponent, {injector})
+        createCustomElement(ViewerProtologComponent, {injector}),
       );
     }
     if (!customElements.get('viewer-screen-recording')) {
       customElements.define(
         'viewer-screen-recording',
-        createCustomElement(ViewerScreenRecordingComponent, {injector})
+        createCustomElement(ViewerScreenRecordingComponent, {injector}),
       );
     }
     if (!customElements.get('viewer-surface-flinger')) {
       customElements.define(
         'viewer-surface-flinger',
-        createCustomElement(ViewerSurfaceFlingerComponent, {injector})
+        createCustomElement(ViewerSurfaceFlingerComponent, {injector}),
       );
     }
     if (!customElements.get('viewer-transactions')) {
       customElements.define(
         'viewer-transactions',
-        createCustomElement(ViewerTransactionsComponent, {injector})
+        createCustomElement(ViewerTransactionsComponent, {injector}),
       );
     }
     if (!customElements.get('viewer-window-manager')) {
       customElements.define(
         'viewer-window-manager',
-        createCustomElement(ViewerWindowManagerComponent, {injector})
+        createCustomElement(ViewerWindowManagerComponent, {injector}),
       );
     }
     if (!customElements.get('viewer-transitions')) {
       customElements.define(
         'viewer-transitions',
-        createCustomElement(ViewerTransitionsComponent, {injector})
+        createCustomElement(ViewerTransitionsComponent, {injector}),
       );
     }
     if (!customElements.get('viewer-view-capture')) {
       customElements.define(
         'viewer-view-capture',
-        createCustomElement(ViewerViewCaptureComponent, {injector})
+        createCustomElement(ViewerViewCaptureComponent, {injector}),
       );
     }
+
+    this.traceConfigStorage =
+      globalConfig.MODE === 'PROD' ? localStorage : new MockStorage();
+
+    this.traceConfig = PersistentStoreProxy.new<TraceConfigurationMap>(
+      'TracingSettings',
+      TRACES['default'],
+      this.traceConfigStorage,
+    );
+    this.dumpConfig = PersistentStoreProxy.new<TraceConfigurationMap>(
+      'DumpSettings',
+      {
+        window_dump: {
+          name: 'Window Manager',
+          isTraceCollection: undefined,
+          run: true,
+          config: undefined,
+        },
+        layers_dump: {
+          name: 'Surface Flinger',
+          isTraceCollection: undefined,
+          run: true,
+          config: undefined,
+        },
+        screenshot: {
+          name: 'Screenshot',
+          isTraceCollection: undefined,
+          run: true,
+          config: undefined,
+        },
+      },
+      this.traceConfigStorage,
+    );
   }
 
   async ngAfterViewInit() {
@@ -436,6 +509,7 @@ export class AppComponent implements WinscopeEventListener {
 
   async onUploadNewButtonClick() {
     await this.mediator.onWinscopeEvent(new AppResetRequest());
+    this.store.clear('treeView');
   }
 
   async onViewTracesButtonClick() {
@@ -443,7 +517,8 @@ export class AppComponent implements WinscopeEventListener {
   }
 
   async downloadTraces() {
-    const archiveBlob = await this.tracePipeline.makeZipArchiveWithLoadedTraceFiles();
+    const archiveBlob =
+      await this.tracePipeline.makeZipArchiveWithLoadedTraceFiles();
     const archiveFilename = `${this.filenameFormControl.value}.zip`;
 
     const a = document.createElement('a');
@@ -460,12 +535,16 @@ export class AppComponent implements WinscopeEventListener {
     await event.visit(WinscopeEventType.TABBED_VIEW_SWITCHED, async (event) => {
       this.activeView = event.newFocusedView;
       this.activeTrace = this.getActiveTrace(event.newFocusedView);
-      this.activeTraceFileInfo = this.makeActiveTraceFileInfo(event.newFocusedView);
+      this.activeTraceFileInfo = this.makeActiveTraceFileInfo(
+        event.newFocusedView,
+      );
     });
 
     await event.visit(WinscopeEventType.VIEWERS_LOADED, async (event) => {
       this.viewers = event.viewers;
-      this.filenameFormControl.setValue(this.tracePipeline.getDownloadArchiveFilename());
+      this.filenameFormControl.setValue(
+        this.tracePipeline.getDownloadArchiveFilename(),
+      );
       this.pageTitle.setTitle(`Winscope | ${this.filenameFormControl.value}`);
       this.isEditingFilename = false;
 

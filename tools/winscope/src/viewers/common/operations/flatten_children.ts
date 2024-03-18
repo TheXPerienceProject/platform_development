@@ -15,22 +15,22 @@
  */
 
 import {Operation} from 'trace/tree_node/operations/operation';
-import {UiHierarchyTreeNode} from '../ui_hierarchy_tree_node';
+import {UiHierarchyTreeNode} from 'viewers/common/ui_hierarchy_tree_node';
 
 export class FlattenChildren implements Operation<UiHierarchyTreeNode> {
-  apply(node: UiHierarchyTreeNode): UiHierarchyTreeNode {
+  apply(node: UiHierarchyTreeNode): void {
     const flattenedChildren = this.extractFlattenedChildren(node);
 
     node.removeAllChildren();
     flattenedChildren.forEach((child) => {
       child.removeAllChildren();
-      node.addChild(child);
+      node.addOrReplaceChild(child);
     });
-
-    return node;
   }
 
-  private extractFlattenedChildren(node: UiHierarchyTreeNode): UiHierarchyTreeNode[] {
+  private extractFlattenedChildren(
+    node: UiHierarchyTreeNode,
+  ): UiHierarchyTreeNode[] {
     const children: UiHierarchyTreeNode[] = [];
     node.getAllChildren().forEach((child) => {
       children.push(child);

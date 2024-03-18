@@ -17,47 +17,46 @@
 import {Transform} from 'parsers/surface_flinger/transform_utils';
 import {Operation} from 'trace/tree_node/operations/operation';
 import {PropertyTreeNode} from 'trace/tree_node/property_tree_node';
-import {PropertyTreeNodeFactory} from 'trace/tree_node/property_tree_node_factory';
+import {DEFAULT_PROPERTY_TREE_NODE_FACTORY} from 'trace/tree_node/property_tree_node_factory';
 
 export class UpdateTransforms implements Operation<PropertyTreeNode> {
-  apply(value: PropertyTreeNode): PropertyTreeNode {
-    const factory = new PropertyTreeNodeFactory();
-
+  apply(value: PropertyTreeNode): void {
     this.updateTransform(
-      value.getChildById(`${value.id}.transform`),
-      value.getChildById(`${value.id}.position`),
-      factory
+      value.getChildByName('transform'),
+      value.getChildByName('position'),
     );
 
     this.updateTransform(
-      value.getChildById(`${value.id}.requestedTransform`),
-      value.getChildById(`${value.id}.requestedPosition`),
-      factory
+      value.getChildByName('requestedTransform'),
+      value.getChildByName('requestedPosition'),
     );
 
-    this.updateTransform(value.getChildById(`${value.id}.bufferTransform`), undefined, factory);
+    this.updateTransform(value.getChildByName('bufferTransform'), undefined);
 
-    const inputWindowInfo = value.getChildById(`${value.id}.inputWindowInfo`);
+    const inputWindowInfo = value.getChildByName('inputWindowInfo');
     if (inputWindowInfo) {
       this.updateTransform(
-        inputWindowInfo.getChildById(`${inputWindowInfo.id}.transform`),
+        inputWindowInfo.getChildByName('transform'),
         undefined,
-        factory
       );
     }
-    return value;
   }
 
   private updateTransform(
     transformNode: PropertyTreeNode | undefined,
     positionNode: PropertyTreeNode | undefined,
-    factory: PropertyTreeNodeFactory
   ) {
     if (!transformNode) return;
     if (transformNode.getChildByName('matrix')) return;
 
     const newMatrix = Transform.from(transformNode, positionNode).matrix;
-    transformNode.addChild(factory.makeCalculatedProperty(transformNode.id, 'matrix', newMatrix));
+    transformNode.addOrReplaceChild(
+      DEFAULT_PROPERTY_TREE_NODE_FACTORY.makeCalculatedProperty(
+        transformNode.id,
+        'matrix',
+        newMatrix,
+      ),
+    );
     transformNode.removeChild(`${transformNode.id}.dsdx`);
     transformNode.removeChild(`${transformNode.id}.dtdx`);
     transformNode.removeChild(`${transformNode.id}.dsdy`);

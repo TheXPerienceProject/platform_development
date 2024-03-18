@@ -26,21 +26,33 @@ describe('AddDiffsHierarchyTree', () => {
   let oldRoot: UiHierarchyTreeNode;
   let expectedRoot: UiHierarchyTreeNode;
 
-  const isModified = async (newTree: TreeNode | undefined, oldTree: TreeNode | undefined) => {
+  const isModified = async (
+    newTree: TreeNode | undefined,
+    oldTree: TreeNode | undefined,
+  ) => {
     return (
-      (newTree as UiHierarchyTreeNode).getEagerPropertyByName('exampleProperty')?.getValue() !==
-      (oldTree as UiHierarchyTreeNode).getEagerPropertyByName('exampleProperty')?.getValue()
+      (newTree as UiHierarchyTreeNode)
+        .getEagerPropertyByName('exampleProperty')
+        ?.getValue() !==
+      (oldTree as UiHierarchyTreeNode)
+        .getEagerPropertyByName('exampleProperty')
+        ?.getValue()
     );
   };
   const addDiffs = new AddDiffsHierarchyTree(isModified);
 
   describe('AddDiffs tests', () => {
-    executeAddDiffsTests(nodeEqualityTester, makeRoot, makeChildAndAddToRoot, addDiffs);
+    executeAddDiffsTests(
+      TreeNodeUtils.treeNodeEqualityTester,
+      makeRoot,
+      makeChildAndAddToRoot,
+      addDiffs,
+    );
   });
 
   describe('Hierarchy tree tests', () => {
     beforeEach(() => {
-      jasmine.addCustomEqualityTester(nodeEqualityTester);
+      jasmine.addCustomEqualityTester(TreeNodeUtils.treeNodeEqualityTester);
       newRoot = makeRoot();
       oldRoot = makeRoot();
       expectedRoot = makeRoot();
@@ -99,47 +111,28 @@ describe('AddDiffsHierarchyTree', () => {
 
   function makeChildAndAddToRoot(
     rootNode: UiHierarchyTreeNode,
-    value = 'value'
+    value = 'value',
   ): UiHierarchyTreeNode {
     const child = TreeNodeUtils.makeUiHierarchyNode({
       id: 'test node',
       name: 'child',
       exampleProperty: value,
     });
-    rootNode.addChild(child);
+    rootNode.addOrReplaceChild(child);
     child.setZParent(rootNode);
     return child;
   }
 
-  function makeParentAndAddToRoot(rootNode: UiHierarchyTreeNode): UiHierarchyTreeNode {
+  function makeParentAndAddToRoot(
+    rootNode: UiHierarchyTreeNode,
+  ): UiHierarchyTreeNode {
     const parent = TreeNodeUtils.makeUiHierarchyNode({
       id: 'test node',
       name: 'parent',
       exampleProperty: 'value',
     });
-    rootNode.addChild(parent);
+    rootNode.addOrReplaceChild(parent);
     parent.setZParent(rootNode);
     return parent;
-  }
-
-  function nodeEqualityTester(first: any, second: any): boolean | undefined {
-    if (first instanceof UiHierarchyTreeNode && second instanceof UiHierarchyTreeNode) {
-      return testHierarchyTreeNodes(first, second);
-    }
-    return undefined;
-  }
-
-  function testHierarchyTreeNodes(
-    node: UiHierarchyTreeNode,
-    expectedNode: UiHierarchyTreeNode
-  ): boolean {
-    if (node.id !== expectedNode.id) return false;
-    if (node.name !== expectedNode.name) return false;
-    if (node.getDiff() !== expectedNode.getDiff()) return false;
-
-    for (const [index, child] of node.getAllChildren().entries()) {
-      if (!testHierarchyTreeNodes(child, expectedNode.getAllChildren()[index])) return false;
-    }
-    return true;
   }
 });

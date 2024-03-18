@@ -14,11 +14,15 @@
  * limitations under the License.
  */
 import {CUSTOM_ELEMENTS_SCHEMA, NO_ERRORS_SCHEMA} from '@angular/core';
-import {ComponentFixture, ComponentFixtureAutoDetect, TestBed} from '@angular/core/testing';
+import {
+  ComponentFixture,
+  ComponentFixtureAutoDetect,
+  TestBed,
+} from '@angular/core/testing';
 import {MatDividerModule} from '@angular/material/divider';
 import {MatIconModule} from '@angular/material/icon';
-import {HierarchyComponentLegacy} from 'viewers/components/legacy/hierarchy_component';
-import {PropertiesComponentLegacy} from 'viewers/components/legacy/properties_component';
+import {HierarchyComponent} from './hierarchy_component';
+import {PropertiesComponent} from './properties_component';
 import {ViewerInputMethodComponent} from './viewer_input_method_component';
 
 describe('ViewerInputMethodComponent', () => {
@@ -32,8 +36,8 @@ describe('ViewerInputMethodComponent', () => {
       imports: [MatIconModule, MatDividerModule],
       declarations: [
         ViewerInputMethodComponent,
-        HierarchyComponentLegacy,
-        PropertiesComponentLegacy,
+        HierarchyComponent,
+        PropertiesComponent,
       ],
       schemas: [CUSTOM_ELEMENTS_SCHEMA, NO_ERRORS_SCHEMA],
     }).compileComponents();

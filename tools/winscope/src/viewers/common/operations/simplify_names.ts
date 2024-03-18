@@ -15,12 +15,11 @@
  */
 
 import {Operation} from 'trace/tree_node/operations/operation';
-import {UiHierarchyTreeNode} from '../ui_hierarchy_tree_node';
+import {UiHierarchyTreeNode} from 'viewers/common/ui_hierarchy_tree_node';
 
 export class SimplifyNames implements Operation<UiHierarchyTreeNode> {
-  apply(node: UiHierarchyTreeNode): UiHierarchyTreeNode {
+  apply(node: UiHierarchyTreeNode): void {
     node.forEachNodeDfs(this.shortenName);
-    return node;
   }
 
   private shortenName(node: UiHierarchyTreeNode) {

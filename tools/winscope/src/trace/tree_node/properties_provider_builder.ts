@@ -18,11 +18,14 @@ import {assertDefined} from 'common/assert_utils';
 import {Operation} from 'trace/tree_node/operations/operation';
 import {OperationChain} from 'trace/tree_node/operations/operation_chain';
 import {PropertyTreeNode} from 'trace/tree_node/property_tree_node';
-import {PropertiesProvider} from './properties_provider';
+import {
+  LazyPropertiesStrategyType,
+  PropertiesProvider,
+} from './properties_provider';
 
 export class PropertiesProviderBuilder {
   private eagerProperties: PropertyTreeNode | undefined;
-  private lazyPropertiesStrategy: (() => Promise<PropertyTreeNode>) | undefined;
+  private lazyPropertiesStrategy: LazyPropertiesStrategyType | undefined;
   private commonOperations = OperationChain.emptyChain<PropertyTreeNode>();
   private eagerOperations = OperationChain.emptyChain<PropertyTreeNode>();
   private lazyOperations = OperationChain.emptyChain<PropertyTreeNode>();
@@ -32,23 +35,23 @@ export class PropertiesProviderBuilder {
     return this;
   }
 
-  setLazyPropertiesStrategy(value: () => Promise<PropertyTreeNode>): this {
+  setLazyPropertiesStrategy(value: LazyPropertiesStrategyType): this {
     this.lazyPropertiesStrategy = value;
     return this;
   }
 
-  addCommonOperation(operation: Operation<PropertyTreeNode>): this {
-    this.commonOperations.push(operation);
+  setCommonOperations(operations: Array<Operation<PropertyTreeNode>>): this {
+    this.commonOperations = new OperationChain<PropertyTreeNode>(operations);
     return this;
   }
 
-  addEagerOperation(operation: Operation<PropertyTreeNode>): this {
-    this.eagerOperations.push(operation);
+  setEagerOperations(operations: Array<Operation<PropertyTreeNode>>): this {
+    this.eagerOperations = new OperationChain<PropertyTreeNode>(operations);
     return this;
   }
 
-  addLazyOperation(operation: Operation<PropertyTreeNode>): this {
-    this.lazyOperations.push(operation);
+  setLazyOperations(operations: Array<Operation<PropertyTreeNode>>): this {
+    this.lazyOperations = new OperationChain<PropertyTreeNode>(operations);
     return this;
   }
 
@@ -58,7 +61,7 @@ export class PropertiesProviderBuilder {
       assertDefined(this.lazyPropertiesStrategy),
       this.commonOperations,
       this.eagerOperations,
-      this.lazyOperations
+      this.lazyOperations,
     );
   }
 }

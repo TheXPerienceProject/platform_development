@@ -25,20 +25,29 @@ describe('AddDiffsPropertiesTree', () => {
   let oldRoot: UiPropertyTreeNode;
   let expectedRoot: UiPropertyTreeNode;
 
-  const isModified = async (newTree: TreeNode | undefined, oldTree: TreeNode | undefined) => {
+  const isModified = async (
+    newTree: TreeNode | undefined,
+    oldTree: TreeNode | undefined,
+  ) => {
     return (
-      (newTree as UiPropertyTreeNode)?.getValue() !== (oldTree as UiPropertyTreeNode)?.getValue()
+      (newTree as UiPropertyTreeNode)?.getValue() !==
+      (oldTree as UiPropertyTreeNode)?.getValue()
     );
   };
   const addDiffs = new AddDiffsPropertiesTree(isModified);
 
   describe('AddDiffs tests', () => {
-    executeAddDiffsTests(nodeEqualityTester, makeRoot, makeChildAndAddToRoot, addDiffs);
+    executeAddDiffsTests(
+      TreeNodeUtils.treeNodeEqualityTester,
+      makeRoot,
+      makeChildAndAddToRoot,
+      addDiffs,
+    );
   });
 
   describe('Property tree tests', () => {
     beforeEach(() => {
-      jasmine.addCustomEqualityTester(nodeEqualityTester);
+      jasmine.addCustomEqualityTester(TreeNodeUtils.treeNodeEqualityTester);
       newRoot = makeRoot();
       oldRoot = makeRoot();
       expectedRoot = makeRoot();
@@ -64,31 +73,10 @@ describe('AddDiffsPropertiesTree', () => {
 
   function makeChildAndAddToRoot(
     rootNode: UiPropertyTreeNode,
-    value = 'value'
+    value = 'value',
   ): UiPropertyTreeNode {
     const child = TreeNodeUtils.makeUiPropertyNode('test node', 'child', value);
-    rootNode.addChild(child);
+    rootNode.addOrReplaceChild(child);
     return child;
-  }
-
-  function nodeEqualityTester(first: any, second: any): boolean | undefined {
-    if (first instanceof UiPropertyTreeNode && second instanceof UiPropertyTreeNode) {
-      return testPropertyTreeNodes(first, second);
-    }
-    return undefined;
-  }
-
-  function testPropertyTreeNodes(
-    node: UiPropertyTreeNode,
-    expectedNode: UiPropertyTreeNode
-  ): boolean {
-    if (node.id !== expectedNode.id) return false;
-    if (node.name !== expectedNode.name) return false;
-    if (node.getDiff() !== expectedNode.getDiff()) return false;
-
-    for (const [index, child] of node.getAllChildren().entries()) {
-      if (!testPropertyTreeNodes(child, expectedNode.getAllChildren()[index])) return false;
-    }
-    return true;
   }
 });

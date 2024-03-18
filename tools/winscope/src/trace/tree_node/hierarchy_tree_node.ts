@@ -23,7 +23,11 @@ export class HierarchyTreeNode extends TreeNode {
   private rects: TraceRect[] | undefined;
   private zParent: this | undefined;
 
-  constructor(id: string, name: string, protected readonly propertiesProvider: PropertiesProvider) {
+  constructor(
+    id: string,
+    name: string,
+    protected readonly propertiesProvider: PropertiesProvider,
+  ) {
     super(id, name);
   }
 
@@ -32,7 +36,7 @@ export class HierarchyTreeNode extends TreeNode {
   }
 
   getEagerPropertyByName(name: string): PropertyTreeNode | undefined {
-    return this.propertiesProvider.getEagerProperties().getChildById(`${this.id}.${name}`);
+    return this.propertiesProvider.getEagerProperties().getChildByName(name);
   }
 
   addEagerProperty(property: PropertyTreeNode): void {

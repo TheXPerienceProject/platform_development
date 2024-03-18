@@ -14,9 +14,14 @@
  * limitations under the License.
  */
 
-import {WinscopeEvent} from 'messaging/winscope_event';
+import {FunctionUtils} from 'common/function_utils';
+import {Timestamp} from 'common/time';
+import {TracePositionUpdate, WinscopeEvent} from 'messaging/winscope_event';
+import {EmitEvent} from 'messaging/winscope_event_emitter';
 import {Traces} from 'trace/traces';
 import {TraceType} from 'trace/trace_type';
+import {PropertyTreeNode} from 'trace/tree_node/property_tree_node';
+import {ViewerEvents} from 'viewers/common/viewer_events';
 import {View, Viewer, ViewType} from 'viewers/viewer';
 import {Events} from './events';
 import {Presenter} from './presenter';
@@ -28,11 +33,12 @@ class ViewerTransactions implements Viewer {
   private readonly htmlElement: HTMLElement;
   private readonly presenter: Presenter;
   private readonly view: View;
+  private emitAppEvent: EmitEvent = FunctionUtils.DO_NOTHING_ASYNC;
 
-  constructor(traces: Traces) {
+  constructor(traces: Traces, storage: Storage) {
     this.htmlElement = document.createElement('viewer-transactions');
 
-    this.presenter = new Presenter(traces, (data: UiData) => {
+    this.presenter = new Presenter(traces, storage, (data: UiData) => {
       (this.htmlElement as any).inputData = data;
     });
 
@@ -56,24 +62,40 @@ class ViewerTransactions implements Viewer {
       this.presenter.onLayerIdFilterChanged((event as CustomEvent).detail);
     });
 
-    this.htmlElement.addEventListener(Events.WhatSearchStringChanged, (event) => {
-      this.presenter.onWhatSearchStringChanged((event as CustomEvent).detail);
+    this.htmlElement.addEventListener(Events.WhatFilterChanged, (event) => {
+      this.presenter.onWhatFilterChanged((event as CustomEvent).detail);
     });
 
-    this.htmlElement.addEventListener(Events.IdFilterChanges, (event) => {
-      this.presenter.onIdFilterChanged((event as CustomEvent).detail);
-    });
+    this.htmlElement.addEventListener(
+      Events.TransactionIdFilterChanged,
+      (event) => {
+        this.presenter.onTransactionIdFilterChanged(
+          (event as CustomEvent).detail,
+        );
+      },
+    );
 
     this.htmlElement.addEventListener(Events.EntryClicked, (event) => {
       this.presenter.onEntryClicked((event as CustomEvent).detail);
     });
+    this.htmlElement.addEventListener(ViewerEvents.TimestampClick, (event) => {
+      this.propagateTimestamp((event as CustomEvent).detail);
+    });
+
+    this.htmlElement.addEventListener(
+      ViewerEvents.PropertiesUserOptionsChange,
+      (event) =>
+        this.presenter.onPropertiesUserOptionsChange(
+          (event as CustomEvent).detail.userOptions,
+        ),
+    );
 
     this.view = new View(
       ViewType.TAB,
       this.getDependencies(),
       this.htmlElement,
       'Transactions',
-      TraceType.TRANSACTIONS
+      TraceType.TRANSACTIONS,
     );
   }
 
@@ -81,8 +103,13 @@ class ViewerTransactions implements Viewer {
     await this.presenter.onAppEvent(event);
   }
 
-  setEmitEvent() {
-    // do nothing
+  setEmitEvent(callback: EmitEvent) {
+    this.emitAppEvent = callback;
+  }
+
+  async propagateTimestamp(timestampNode: PropertyTreeNode) {
+    const timestamp: Timestamp = timestampNode.getValue();
+    await this.emitAppEvent(TracePositionUpdate.fromTimestamp(timestamp, true));
   }
 
   getViews(): View[] {

@@ -23,8 +23,8 @@ export abstract class AddDiffs<T extends DiffNode> {
   private newIdNodeMap = new Map<string, T>();
   private oldIdNodeMap = new Map<string, T>();
   protected abstract addDiffsToNewRoot: boolean;
-
   protected abstract processModifiedNodes(newNode: T, oldNode: T): void;
+  protected abstract processOldNode(oldNode: T): void;
 
   constructor(private isModified: IsModifiedCallbackType) {}
 
@@ -48,7 +48,7 @@ export abstract class AddDiffs<T extends DiffNode> {
     newNode: T | undefined,
     oldNode: T | undefined,
     newNodeSiblingIds: string[],
-    oldNodeSiblingIds: string[]
+    oldNodeSiblingIds: string[],
   ): Promise<T[]> {
     const diffNodes: T[] = [];
 
@@ -68,8 +68,9 @@ export abstract class AddDiffs<T extends DiffNode> {
         const newChildren = await this.visitChildren(undefined, oldNode);
         oldNode.removeAllChildren();
         newChildren.forEach((child) => {
-          assertDefined(oldNode).addChild(child);
+          assertDefined(oldNode).addOrReplaceChild(child);
         });
+        this.processOldNode(oldNode);
         diffNodes.push(oldNode);
       }
       return diffNodes;
@@ -104,46 +105,58 @@ export abstract class AddDiffs<T extends DiffNode> {
           oldNode.removeAllChildren();
 
           newChildren.forEach((child) => {
-            assertDefined(oldNode).addChild(child);
+            assertDefined(oldNode).addOrReplaceChild(child);
           });
         }
+        this.processOldNode(oldNode);
         diffNodes.push(oldNode);
       }
 
       oldNode = nextOldNode;
     } else if (!newNode.isRoot()) {
-      if (oldNode && oldNode.id === newNode.id && (await this.isModified(newNode, oldNode))) {
+      if (
+        oldNode &&
+        oldNode.id === newNode.id &&
+        (await this.isModified(newNode, oldNode))
+      ) {
         this.processModifiedNodes(newNode, oldNode);
       }
     }
 
     const newChildren = await this.visitChildren(newNode, oldNode);
     newNode.removeAllChildren();
-    newChildren.forEach((child) => assertDefined(newNode).addChild(child));
+    newChildren.forEach((child) =>
+      assertDefined(newNode).addOrReplaceChild(child),
+    );
 
     diffNodes.push(newNode);
     return diffNodes;
   }
 
-  async visitChildren(newNode: T | undefined, oldNode: T | undefined): Promise<T[]> {
+  async visitChildren(
+    newNode: T | undefined,
+    oldNode: T | undefined,
+  ): Promise<T[]> {
     const diffChildren: T[] = [];
     const numOfChildren = Math.max(
       newNode?.getAllChildren().length ?? 0,
-      oldNode?.getAllChildren().length ?? 0
+      oldNode?.getAllChildren().length ?? 0,
     );
     for (let i = 0; i < numOfChildren; i++) {
-      const newChild = newNode?.getAllChildren()?.at(i);
-      let oldChild = oldNode?.getAllChildren()?.at(i);
+      const newChild = newNode?.getAllChildren()[i];
+      let oldChild = oldNode?.getAllChildren()[i];
 
       if (!oldChild && newChild) {
-        oldChild = oldNode?.getAllChildren()?.find((node) => node.name === newChild.name);
+        oldChild = oldNode
+          ?.getAllChildren()
+          .find((node) => node.name === newChild.name);
       }
 
       const childDiffTrees = await this.generateDiffNodes(
         newChild,
         oldChild,
         newNode?.getAllChildren().map((child) => child.id) ?? [],
-        oldNode?.getAllChildren().map((child) => child.id) ?? []
+        oldNode?.getAllChildren().map((child) => child.id) ?? [],
       );
       childDiffTrees.forEach((child) => diffChildren.push(child));
     }
@@ -154,5 +167,5 @@ export abstract class AddDiffs<T extends DiffNode> {
 
 export type IsModifiedCallbackType = (
   newTree: TreeNode | undefined,
-  oldTree: TreeNode | undefined
+  oldTree: TreeNode | undefined,
 ) => Promise<boolean>;

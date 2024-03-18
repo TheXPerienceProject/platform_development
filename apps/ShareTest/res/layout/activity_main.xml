@@ -49,11 +49,19 @@
                 />
             </RadioGroup>
 
-            <TextView
+            <CheckBox
+                android:id="@+id/shareousel"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                style="@style/title"
-                android:text="Represent Media As"
+                android:text="Enable Shareousel"
+                />
+
+            <TextView
+                android:id="@+id/media_type_header"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                style="@style/subtitle"
+                android:text="Media Type"
                 />
 
             <Spinner
@@ -99,6 +107,7 @@
                     android:layout_height="wrap_content"
                     android:text="URL"
                 />
+
             </RadioGroup>
 
             <LinearLayout
@@ -123,17 +132,27 @@
                         android:id="@+id/include_icon"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Include Icon"
-                    />
+                        android:text="Include Icon" />
                 </LinearLayout>
 
-                <CheckBox
-                    android:id="@+id/use_rich_text"
+                <LinearLayout
                     android:layout_width="0dp"
-                    android:layout_weight="1"
                     android:layout_height="wrap_content"
-                    android:text="Use Rich Text"
-                    />
+                    android:layout_weight="1"
+                    android:orientation="vertical">
+
+                    <CheckBox
+                        android:id="@+id/use_rich_text"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Use Rich Text" />
+
+                    <CheckBox
+                        android:id="@+id/album_text"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Mark as Album" />
+                </LinearLayout>
             </LinearLayout>
 
             <TextView
@@ -174,6 +193,19 @@
                 android:layout_height="wrap_content"
                 android:text="Include Modify Share"
             />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                style="@style/title"
+                android:text="Metadata"
+                />
+
+            <EditText
+                android:id="@+id/metadata"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                />
 
             <TextView
                 android:layout_width="match_parent"

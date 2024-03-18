@@ -23,11 +23,11 @@ import {PropertyTreeNode} from 'trace/tree_node/property_tree_node';
 export class TranslateIntDef implements Operation<PropertyTreeNode> {
   constructor(private readonly rootField: TamperedProtoField) {}
 
-  apply(value: PropertyTreeNode, parentField = this.rootField): PropertyTreeNode {
+  apply(value: PropertyTreeNode, parentField = this.rootField): void {
     const protoType = parentField.tamperedMessageType;
 
     if (protoType === undefined) {
-      return value;
+      return;
     }
 
     let field = parentField;
@@ -37,23 +37,24 @@ export class TranslateIntDef implements Operation<PropertyTreeNode> {
 
     if (value.getAllChildren().length > 0) {
       value.getAllChildren().forEach((value) => {
-        value = this.apply(value, field);
+        this.apply(value, field);
       });
     } else {
       if (typeof value.getValue() === 'number' && value.getValue() !== -1) {
-        const translation = this.translateIntDefToStringIfNeeded(value.getValue(), field);
+        const translation = this.translateIntDefToStringIfNeeded(
+          value.getValue(),
+          field,
+        );
         if (typeof translation === 'string') {
           value.setFormatter(new FixedStringFormatter(translation));
         }
       }
     }
-
-    return value;
   }
 
   private translateIntDefToStringIfNeeded(
     value: number,
-    field: TamperedProtoField
+    field: TamperedProtoField,
   ): string | number {
     const typeDefSpec = this.getTypeDefSpecFromField(field);
 
@@ -62,21 +63,30 @@ export class TranslateIntDef implements Operation<PropertyTreeNode> {
     } else {
       const propertyPath = `${field.parent?.name}.${field.name}`;
       if (this.intDefColumn[propertyPath]) {
-        return this.getIntFlagsAsStrings(value, this.intDefColumn[propertyPath] as string);
+        return this.getIntFlagsAsStrings(
+          value,
+          this.intDefColumn[propertyPath] as string,
+        );
       }
     }
 
     return value;
   }
 
-  private getTypeDefSpecFromField(field: TamperedProtoField): string | undefined {
+  private getTypeDefSpecFromField(
+    field: TamperedProtoField,
+  ): string | undefined {
     return field.options ? field.options['(.android.typedef)'] : undefined;
   }
 
-  private getIntFlagsAsStrings(intFlags: number, annotationType: string): string {
-    const flags = [];
+  private getIntFlagsAsStrings(
+    intFlags: number,
+    annotationType: string,
+  ): string {
+    let flags = '';
 
-    const mapping = intDefMapping[annotationType as keyof typeof intDefMapping].values;
+    const mapping =
+      intDefMapping[annotationType as keyof typeof intDefMapping].values;
 
     const knownFlagValues = Object.keys(mapping)
       .reverse()
@@ -96,7 +106,8 @@ export class TranslateIntDef implements Operation<PropertyTreeNode> {
         (leftOver & flagValue && (intFlags & flagValue) === flagValue) ||
         (parsedIntFlags === 0 && flagValue === 0)
       ) {
-        flags.push(mapping[flagValue as keyof typeof mapping]);
+        if (flags.length > 0) flags += ' | ';
+        flags += mapping[flagValue as keyof typeof mapping];
 
         leftOver = leftOver & ~flagValue;
       }
@@ -108,30 +119,46 @@ export class TranslateIntDef implements Operation<PropertyTreeNode> {
 
     if (leftOver) {
       // If 0 is a valid flag value that isn't in the intDefMapping it will be ignored
-      flags.push(leftOver);
+      flags += leftOver;
     }
 
-    return flags.join(' | ');
+    return flags;
   }
 
   private readonly intDefColumn: {[key: string]: string} = {
-    'WindowLayoutParams.type': 'android.view.WindowManager.LayoutParams.WindowType',
+    'WindowLayoutParams.type':
+      'android.view.WindowManager.LayoutParams.WindowType',
     'WindowLayoutParams.flags': 'android.view.WindowManager.LayoutParams.Flags',
-    'WindowLayoutParams.privateFlags': 'android.view.WindowManager.LayoutParams.PrivateFlags',
+    'WindowLayoutParams.privateFlags':
+      'android.view.WindowManager.LayoutParams.PrivateFlags',
     'WindowLayoutParams.gravity': 'android.view.Gravity.GravityFlags',
-    'WindowLayoutParams.softInputMode': 'android.view.WindowManager.LayoutParams.WindowType',
+    'WindowLayoutParams.softInputMode':
+      'android.view.WindowManager.LayoutParams.WindowType',
     'WindowLayoutParams.systemUiVisibilityFlags':
       'android.view.WindowManager.LayoutParams.SystemUiVisibilityFlags',
     'WindowLayoutParams.subtreeSystemUiVisibilityFlags':
       'android.view.WindowManager.LayoutParams.SystemUiVisibilityFlags',
-    'WindowLayoutParams.behavior': 'android.view.WindowInsetsController.Behavior',
-    'WindowLayoutParams.fitInsetsSides': 'android.view.WindowInsets.Side.InsetsSide',
-    'InputWindowInfoProto.layoutParamsFlags': 'android.view.WindowManager.LayoutParams.Flags',
-    'InputWindowInfoProto.inputConfig': 'android.view.InputWindowHandle.InputConfigFlags',
-    'Configuration.windowingMode': 'android.app.WindowConfiguration.WindowingMode',
-    'WindowConfiguration.windowingMode': 'android.app.WindowConfiguration.WindowingMode',
-    'Configuration.orientation': 'android.content.pm.ActivityInfo.ScreenOrientation',
-    'WindowConfiguration.orientation': 'android.content.pm.ActivityInfo.ScreenOrientation',
-    'WindowState.orientation': 'android.content.pm.ActivityInfo.ScreenOrientation',
+    'WindowLayoutParams.behavior':
+      'android.view.WindowInsetsController.Behavior',
+    'WindowLayoutParams.fitInsetsSides':
+      'android.view.WindowInsets.Side.InsetsSide',
+    'InputWindowInfoProto.layoutParamsFlags':
+      'android.view.WindowManager.LayoutParams.Flags',
+    'InputWindowInfoProto.inputConfig':
+      'android.view.InputWindowHandle.InputConfigFlags',
+    'Configuration.windowingMode':
+      'android.app.WindowConfiguration.WindowingMode',
+    'WindowConfiguration.windowingMode':
+      'android.app.WindowConfiguration.WindowingMode',
+    'Configuration.orientation':
+      'android.content.pm.ActivityInfo.ScreenOrientation',
+    'WindowConfiguration.orientation':
+      'android.content.pm.ActivityInfo.ScreenOrientation',
+    'WindowState.orientation':
+      'android.content.pm.ActivityInfo.ScreenOrientation',
+    'InsetsSourceControlProto.typeNumber':
+      'android.view.WindowInsets.Type.InsetsType',
+    'InsetsSourceConsumerProto.typeNumber':
+      'android.view.WindowInsets.Type.InsetsType',
   };
 }

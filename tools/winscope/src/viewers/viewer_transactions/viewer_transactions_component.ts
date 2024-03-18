@@ -16,6 +16,11 @@
 import {CdkVirtualScrollViewport} from '@angular/cdk/scrolling';
 import {Component, ElementRef, Inject, Input, ViewChild} from '@angular/core';
 import {MatSelectChange} from '@angular/material/select';
+import {PropertyTreeNode} from 'trace/tree_node/property_tree_node';
+import {ViewerEvents} from 'viewers/common/viewer_events';
+import {currentElementStyle} from 'viewers/components/styles/current_element.styles';
+import {selectedElementStyle} from 'viewers/components/styles/selected_element.styles';
+import {timeButtonStyle} from 'viewers/components/styles/timestamp_button.styles';
 import {Events} from './events';
 import {UiData} from './ui_data';
 
@@ -27,67 +32,72 @@ import {UiData} from './ui_data';
         <div class="filters">
           <div class="time"></div>
           <div class="id">
-            <mat-form-field appearance="fill">
-              <mat-label>TX ID</mat-label>
-              <input matInput [(ngModel)]="idString" (input)="onIdSearchStringChanged()" />
-            </mat-form-field>
+            <select-with-filter
+              label="TX ID"
+              [options]="uiData.allTransactionIds"
+              outerFilterWidth="125"
+              innerFilterWidth="125"
+              (selectChange)="onTransactionIdFilterChanged($event)">
+            </select-with-filter>
           </div>
           <div class="vsyncid">
-            <mat-form-field appearance="fill">
-              <mat-label>VSYNC ID</mat-label>
-              <mat-select (selectionChange)="onVSyncIdFilterChanged($event)" multiple>
-                <mat-option *ngFor="let vsyncId of uiData.allVSyncIds" [value]="vsyncId">
-                  {{ vsyncId }}
-                </mat-option>
-              </mat-select>
-            </mat-form-field>
+            <select-with-filter
+              label="VSYNC ID"
+              [options]="uiData.allVSyncIds"
+              outerFilterWidth="110"
+              innerFilterWidth="90"
+              (selectChange)="onVSyncIdFilterChanged($event)">
+            </select-with-filter>
           </div>
           <div class="pid">
-            <mat-form-field appearance="fill">
-              <mat-label>PID</mat-label>
-              <mat-select (selectionChange)="onPidFilterChanged($event)" multiple>
-                <mat-option *ngFor="let pid of uiData.allPids" [value]="pid">
-                  {{ pid }}
-                </mat-option>
-              </mat-select>
-            </mat-form-field>
+            <select-with-filter
+              label="PID"
+              [options]="uiData.allPids"
+              (selectChange)="onPidFilterChanged($event)">
+            </select-with-filter>
           </div>
           <div class="uid">
-            <mat-form-field appearance="fill">
-              <mat-label>UID</mat-label>
-              <mat-select (selectionChange)="onUidFilterChanged($event)" multiple>
-                <mat-option *ngFor="let uid of uiData.allUids" [value]="uid">
-                  {{ uid }}
-                </mat-option>
-              </mat-select>
-            </mat-form-field>
+            <select-with-filter
+              label="UID"
+              [options]="uiData.allUids"
+              (selectChange)="onUidFilterChanged($event)">
+            </select-with-filter>
           </div>
           <div class="type">
-            <mat-form-field appearance="fill">
-              <mat-label>Type</mat-label>
-              <mat-select (selectionChange)="onTypeFilterChanged($event)" multiple>
-                <mat-option *ngFor="let type of uiData.allTypes" [value]="type">
-                  {{ type }}
-                </mat-option>
-              </mat-select>
-            </mat-form-field>
+            <select-with-filter
+              label="Type"
+              innerFilterWidth="175"
+              [options]="uiData.allTypes"
+              (selectChange)="onTypeFilterChanged($event)">
+            </select-with-filter>
           </div>
           <div class="id">
-            <mat-form-field appearance="fill">
-              <mat-label>LAYER/DISP ID</mat-label>
-              <mat-select (selectionChange)="onLayerIdFilterChanged($event)" multiple>
-                <mat-option *ngFor="let id of uiData.allLayerAndDisplayIds" [value]="id">
-                  {{ id }}
-                </mat-option>
-              </mat-select>
-            </mat-form-field>
+            <select-with-filter
+              label="LAYER/DISP ID"
+              outerFilterWidth="125"
+              innerFilterWidth="100"
+              [options]="uiData.allLayerAndDisplayIds"
+              (selectChange)="onLayerIdFilterChanged($event)">
+            </select-with-filter>
           </div>
           <div class="what">
-            <mat-form-field appearance="fill" (keydown.enter)="$event.target.blur()">
-              <mat-label>Search text</mat-label>
-              <input matInput [(ngModel)]="whatSearchString" (input)="onWhatSearchStringChange()" />
-            </mat-form-field>
+            <select-with-filter
+              label="Search text"
+              outerFilterWidth="250"
+              innerFilterWidth="250"
+              [options]="uiData.allFlags"
+              flex="2 0 250px"
+              (selectChange)="onWhatFilterChanged($event)">
+            </select-with-filter>
           </div>
+
+          <button
+            color="primary"
+            mat-stroked-button
+            class="go-to-current-time"
+            (click)="onGoToCurrentTimeClick()">
+            Go to Current Time
+          </button>
         </div>
 
         <cdk-virtual-scroll-viewport
@@ -98,13 +108,18 @@ import {UiData} from './ui_data';
             *cdkVirtualFor="let entry of uiData.entries; let i = index"
             class="entry"
             [attr.item-id]="i"
-            [class.current-entry]="isCurrentEntry(i)"
-            [class.selected-entry]="isSelectedEntry(i)"
+            [class.current]="isCurrentEntry(i)"
+            [class.selected]="isSelectedEntry(i)"
             (click)="onEntryClicked(i)">
             <div class="time">
-              <span class="mat-body-1">{{ entry.time }}</span>
+              <button
+                mat-button
+                [color]="isCurrentEntry(i) ? 'secondary' : 'primary'"
+                (click)="onTimestampClicked(entry.time)">
+                {{ entry.time.formattedValue() }}
+              </button>
             </div>
-            <div class="id">
+            <div class="id transaction-id">
               <span class="mat-body-1">{{ entry.transactionId }}</span>
             </div>
             <div class="vsyncid">
@@ -119,7 +134,7 @@ import {UiData} from './ui_data';
             <div class="type">
               <span class="mat-body-1">{{ entry.type }}</span>
             </div>
-            <div class="id">
+            <div class="id layer-or-display-id">
               <span class="mat-body-1">{{ entry.layerOrDisplayId }}</span>
             </div>
             <div class="what">
@@ -133,10 +148,21 @@ import {UiData} from './ui_data';
 
       <div class="container-properties">
         <h3 class="properties-title mat-title">Properties - Proto Dump</h3>
-        <tree-view-legacy
+        <div class="view-controls">
+          <mat-checkbox
+            *ngFor="let option of objectKeys(uiData.propertiesUserOptions)"
+            color="primary"
+            [(ngModel)]="uiData.propertiesUserOptions[option].enabled"
+            [disabled]="uiData.propertiesUserOptions[option].isUnavailable ?? false"
+            (ngModelChange)="onUserOptionChange()"
+            [matTooltip]="uiData.propertiesUserOptions[option].tooltip ?? ''"
+            >{{ uiData.propertiesUserOptions[option].name }}</mat-checkbox
+          >
+        </div>
+        <tree-view
           *ngIf="uiData.currentPropertiesTree"
-          class="properties-tree"
-          [item]="uiData.currentPropertiesTree"></tree-view-legacy>
+          class="properties-view tree-wrapper"
+          [node]="uiData.currentPropertiesTree"></tree-view>
       </div>
     </div>
   `,
@@ -169,60 +195,53 @@ import {UiData} from './ui_data';
         flex-direction: row;
       }
 
-      .filters div {
-        flex: 1;
+      .filters div,
+      .entries div {
         padding: 4px;
       }
 
-      .filters .vsyncid mat-form-field {
-        width: 120px;
+      .time {
+        flex: 0 1 250px;
       }
 
-      .filters div.time {
-        flex: 2;
+      .id {
+        flex: none;
+        width: 125px;
       }
 
-      .filters div.what {
-        flex: 3;
+      .vsyncid {
+        flex: none;
+        width: 110px;
       }
 
-      .filters .id mat-form-field {
-        width: 150px;
+      .pid {
+        flex: none;
+        width: 75px;
+      }
+
+      .uid {
+        flex: none;
+        width: 75px;
+      }
+
+      .type {
+        width: 200px;
+      }
+
+      .what {
+        flex: 2 0 250px;
       }
 
       .filters .what {
         margin-right: 16px;
       }
 
-      .filters .what mat-form-field {
-        width: 250px;
-      }
-
-      .entry div {
-        flex: 1;
-        padding: 4px;
-      }
-
-      .entry div.time {
-        flex: 2;
-      }
-
-      .entry div.what {
-        flex: 3;
-      }
-
-      .entry.current-entry {
-        color: white;
-        background-color: #365179;
-      }
-
-      .entry.selected-entry {
-        color: white;
-        background-color: #98aecd;
-      }
-
-      mat-form-field {
-        width: 100px;
+      .go-to-current-time {
+        flex: none;
+        margin-top: 4px;
+        font-size: 12px;
+        height: 65%;
+        width: fit-content;
       }
 
       ::ng-deep .mat-select-panel-wrap {
@@ -231,24 +250,30 @@ import {UiData} from './ui_data';
         max-height: 75vh;
       }
     `,
+    selectedElementStyle,
+    currentElementStyle,
+    timeButtonStyle,
   ],
 })
 class ViewerTransactionsComponent {
+  objectKeys = Object.keys;
   uiData: UiData = UiData.EMPTY;
-  idString = '';
-  whatSearchString = '';
+  private lastClicked = '';
 
-  @ViewChild(CdkVirtualScrollViewport) scrollComponent?: CdkVirtualScrollViewport;
-  private elementRef: ElementRef;
+  @ViewChild(CdkVirtualScrollViewport)
+  scrollComponent?: CdkVirtualScrollViewport;
 
-  constructor(@Inject(ElementRef) elementRef: ElementRef) {
-    this.elementRef = elementRef;
-  }
+  constructor(@Inject(ElementRef) private elementRef: ElementRef) {}
 
   @Input()
   set inputData(data: UiData) {
     this.uiData = data;
-    if (this.uiData.scrollToIndex !== undefined && this.scrollComponent) {
+    if (
+      this.uiData.scrollToIndex !== undefined &&
+      this.scrollComponent &&
+      this.lastClicked !==
+        this.uiData.entries[this.uiData.scrollToIndex].time.formattedValue()
+    ) {
       this.scrollComponent.scrollToIndex(this.uiData.scrollToIndex);
     }
   }
@@ -273,16 +298,38 @@ class ViewerTransactionsComponent {
     this.emitEvent(Events.LayerIdFilterChanged, event.value);
   }
 
-  onWhatSearchStringChange() {
-    this.emitEvent(Events.WhatSearchStringChanged, this.whatSearchString);
+  onWhatFilterChanged(event: MatSelectChange) {
+    this.emitEvent(Events.WhatFilterChanged, event.value);
   }
 
-  onIdSearchStringChanged() {
-    this.emitEvent(Events.IdFilterChanges, this.idString);
+  onTransactionIdFilterChanged(event: MatSelectChange) {
+    this.emitEvent(Events.TransactionIdFilterChanged, event.value);
   }
 
   onEntryClicked(index: number) {
     this.emitEvent(Events.EntryClicked, index);
+  }
+
+  onUserOptionChange() {
+    const event: CustomEvent = new CustomEvent(
+      ViewerEvents.PropertiesUserOptionsChange,
+      {
+        bubbles: true,
+        detail: {userOptions: this.uiData.propertiesUserOptions},
+      },
+    );
+    this.elementRef.nativeElement.dispatchEvent(event);
+  }
+
+  onGoToCurrentTimeClick() {
+    if (this.uiData.currentEntryIndex !== undefined && this.scrollComponent) {
+      this.scrollComponent.scrollToIndex(this.uiData.currentEntryIndex);
+    }
+  }
+
+  onTimestampClicked(timestamp: PropertyTreeNode) {
+    this.lastClicked = timestamp.formattedValue();
+    this.emitEvent(ViewerEvents.TimestampClick, timestamp);
   }
 
   isCurrentEntry(index: number): boolean {

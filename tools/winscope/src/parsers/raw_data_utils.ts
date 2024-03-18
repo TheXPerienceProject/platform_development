@@ -31,31 +31,43 @@ export class RawDataUtils {
   }
 
   static isColor(obj: PropertyTreeNode): boolean {
-    return obj.getChildByName('a') !== undefined;
+    return (
+      (obj.getChildByName('r') !== undefined &&
+        obj.getChildByName('g') !== undefined &&
+        obj.getChildByName('b') !== undefined) ||
+      obj.getChildByName('a') !== undefined
+    );
   }
 
   static isRect(obj: PropertyTreeNode): boolean {
     return (
-      (obj.getChildByName('right') !== undefined && obj.getChildByName('bottom') !== undefined) ||
-      (obj.getChildByName('left') !== undefined && obj.getChildByName('top') !== undefined)
+      (obj.getChildByName('right') !== undefined &&
+        obj.getChildByName('bottom') !== undefined) ||
+      (obj.getChildByName('left') !== undefined &&
+        obj.getChildByName('top') !== undefined)
     );
   }
 
   static isBuffer(obj: PropertyTreeNode): boolean {
-    return obj.getChildByName('stride') !== undefined && obj.getChildByName('format') !== undefined;
+    return (
+      obj.getChildByName('stride') !== undefined &&
+      obj.getChildByName('format') !== undefined
+    );
   }
 
   static isSize(obj: PropertyTreeNode): boolean {
     return (
       obj.getAllChildren().length <= 2 &&
-      (obj.getChildByName('w') !== undefined || obj.getChildByName('h') !== undefined)
+      (obj.getChildByName('w') !== undefined ||
+        obj.getChildByName('h') !== undefined)
     );
   }
 
   static isPosition(obj: PropertyTreeNode): boolean {
     return (
       obj.getAllChildren().length <= 2 &&
-      (obj.getChildByName('x') !== undefined || obj.getChildByName('y') !== undefined)
+      (obj.getChildByName('x') !== undefined ||
+        obj.getChildByName('y') !== undefined)
     );
   }
 
@@ -63,7 +75,19 @@ export class RawDataUtils {
     const rect = obj.getChildByName('rect');
     return (
       rect !== undefined &&
-      rect.getAllChildren().every((innerRect: PropertyTreeNode) => RawDataUtils.isRect(innerRect))
+      rect
+        .getAllChildren()
+        .every((innerRect: PropertyTreeNode) => RawDataUtils.isRect(innerRect))
+    );
+  }
+
+  static isMatrix(obj: PropertyTreeNode): boolean {
+    return (
+      !obj.getChildByName('type') &&
+      (obj.getChildByName('dsdx') !== undefined ||
+        obj.getChildByName('dtdx') !== undefined ||
+        obj.getChildByName('dsdy') !== undefined ||
+        obj.getChildByName('dtdy') !== undefined)
     );
   }
 

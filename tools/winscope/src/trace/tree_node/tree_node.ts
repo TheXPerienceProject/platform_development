@@ -19,10 +19,12 @@ import {Item} from 'trace/item';
 export abstract class TreeNode implements Item {
   protected children: this[] = [];
 
-  constructor(public id: string, public name: string) {}
+  constructor(readonly id: string, readonly name: string) {}
 
-  addChild(newChild: this): void {
-    const currIndex = this.children.findIndex((child) => child.id === newChild.id);
+  addOrReplaceChild(newChild: this): void {
+    const currIndex = this.children.findIndex(
+      (child) => child.id === newChild.id,
+    );
     if (currIndex !== -1) {
       this.children[currIndex] = newChild;
     } else {
@@ -38,19 +40,26 @@ export abstract class TreeNode implements Item {
     this.children = [];
   }
 
-  getChildById(id: string): this | undefined {
-    return this.children.find((child) => child.id === id);
+  getChildByName(name: string): this | undefined {
+    return this.children.find((child) => child.name === name);
   }
 
-  getAllChildren(): this[] {
+  getAllChildren(): readonly this[] {
     return this.children;
   }
 
-  forEachNodeDfs(callback: (node: this) => void) {
+  forEachNodeDfs(callback: (node: this) => void, reverseChildren = false) {
     callback(this);
-    this.children.forEach((child) => {
-      child.forEachNodeDfs(callback);
-    });
+
+    if (reverseChildren) {
+      for (let i = this.children.length - 1; i > -1; i--) {
+        this.children[i].forEachNodeDfs(callback, reverseChildren);
+      }
+    } else {
+      this.children.forEach((child) =>
+        child.forEachNodeDfs(callback, reverseChildren),
+      );
+    }
   }
 
   findDfs(targetNodeFilter: (node: this) => boolean): this | undefined {
@@ -64,6 +73,21 @@ export abstract class TreeNode implements Item {
     }
 
     return undefined;
+  }
+
+  filterDfs(
+    predicate: (node: this) => boolean,
+    reverseChildren = false,
+  ): this[] {
+    const result: this[] = [];
+
+    this.forEachNodeDfs((node) => {
+      if (predicate(node)) {
+        result.push(node);
+      }
+    }, reverseChildren);
+
+    return result;
   }
 
   abstract isRoot(): boolean;

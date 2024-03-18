@@ -18,12 +18,16 @@ import {CdkVirtualScrollViewport} from '@angular/cdk/scrolling';
 import {ComponentFixture} from '@angular/core/testing';
 import {assertDefined} from 'common/assert_utils';
 import {animationFrameScheduler} from 'rxjs';
+import {ViewerProtologComponent} from 'viewers/viewer_protolog/viewer_protolog_component';
+import {ViewerTransactionsComponent} from 'viewers/viewer_transactions/viewer_transactions_component';
+
+type ScrollComponent = ViewerProtologComponent | ViewerTransactionsComponent;
 
 export function executeScrollComponentTests(
   itemClassName: string,
   setUpTestEnvironment: () => Promise<
-    [ComponentFixture<any>, HTMLElement, CdkVirtualScrollViewport]
-  >
+    [ComponentFixture<ScrollComponent>, HTMLElement, CdkVirtualScrollViewport]
+  >,
 ) {
   describe('', () => {
     let fixture: ComponentFixture<any>;
@@ -48,9 +52,13 @@ export function executeScrollComponentTests(
     });
 
     it('should scroll to index in large jumps', () => {
-      expect(htmlElement.querySelector(`.${itemClassName}[item-id="30"]`)).toBeFalsy();
+      expect(
+        htmlElement.querySelector(`.${itemClassName}[item-id="30"]`),
+      ).toBeFalsy();
       checkScrollToIndex(30);
-      expect(htmlElement.querySelector(`.${itemClassName}[item-id="70"]`)).toBeFalsy();
+      expect(
+        htmlElement.querySelector(`.${itemClassName}[item-id="70"]`),
+      ).toBeFalsy();
       checkScrollToIndex(70);
     });
 
@@ -68,7 +76,9 @@ export function executeScrollComponentTests(
       viewport.elementRef.nativeElement.dispatchEvent(new Event('scroll'));
       animationFrameScheduler.flush();
       fixture.detectChanges();
-      assertDefined(htmlElement.querySelector(`.${itemClassName}[item-id="${i}"]`));
+      assertDefined(
+        htmlElement.querySelector(`.${itemClassName}[item-id="${i}"]`),
+      );
     }
   });
 }

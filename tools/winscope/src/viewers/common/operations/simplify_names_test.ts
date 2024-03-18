@@ -37,13 +37,15 @@ describe('SimplifyNames', () => {
         id: i,
         name: 'node' + '.child'.repeat(10),
       });
-      hierarchyRoot.addChild(child);
+      hierarchyRoot.addOrReplaceChild(child);
     }
 
-    const root = operation.apply(hierarchyRoot);
-    root
+    operation.apply(hierarchyRoot);
+    hierarchyRoot
       .getAllChildren()
-      .forEach((child) => expect(child.getDisplayName()).toEqual('node.child.(...).child'));
+      .forEach((child) =>
+        expect(child.getDisplayName()).toEqual('node.child.(...).child'),
+      );
   });
 
   it('does not change already short names', () => {
@@ -57,10 +59,12 @@ describe('SimplifyNames', () => {
         id: i,
         name: 'node.child',
       });
-      hierarchyRoot.addChild(child);
+      hierarchyRoot.addOrReplaceChild(child);
     }
 
-    const root = operation.apply(hierarchyRoot);
-    root.getAllChildren().forEach((child) => expect(child.getDisplayName()).toEqual('node.child'));
+    operation.apply(hierarchyRoot);
+    hierarchyRoot
+      .getAllChildren()
+      .forEach((child) => expect(child.getDisplayName()).toEqual('node.child'));
   });
 });

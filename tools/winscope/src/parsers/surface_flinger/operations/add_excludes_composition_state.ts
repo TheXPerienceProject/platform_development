@@ -16,7 +16,7 @@
 
 import {AddOperation} from 'trace/tree_node/operations/add_operation';
 import {PropertyTreeNode} from 'trace/tree_node/property_tree_node';
-import {PropertyTreeNodeFactory} from 'trace/tree_node/property_tree_node_factory';
+import {DEFAULT_PROPERTY_TREE_NODE_FACTORY} from 'trace/tree_node/property_tree_node_factory';
 
 export class AddExcludesCompositionState extends AddOperation<PropertyTreeNode> {
   constructor(private readonly excludesCompositionState: boolean) {
@@ -24,14 +24,13 @@ export class AddExcludesCompositionState extends AddOperation<PropertyTreeNode> 
   }
 
   protected override makeProperties(
-    factory: PropertyTreeNodeFactory,
-    value: PropertyTreeNode
+    value: PropertyTreeNode,
   ): PropertyTreeNode[] {
     return [
-      factory.makeCalculatedProperty(
+      DEFAULT_PROPERTY_TREE_NODE_FACTORY.makeCalculatedProperty(
         value.id,
         'excludesCompositionState',
-        this.excludesCompositionState
+        this.excludesCompositionState,
       ),
     ];
   }

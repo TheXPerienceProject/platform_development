@@ -14,16 +14,15 @@
  * limitations under the License.
  */
 
-import {Cuj, Event, Transition} from 'flickerlib/common';
-import {WindowManagerState} from 'flickerlib/windows/WindowManagerState';
-import {LogMessage} from './protolog';
 import {ScreenRecordingTraceEntry} from './screen_recording';
 import {HierarchyTreeNode} from './tree_node/hierarchy_tree_node';
+import {PropertyTreeNode} from './tree_node/property_tree_node';
 
 export enum TraceType {
   WINDOW_MANAGER,
   SURFACE_FLINGER,
   SCREEN_RECORDING,
+  SCREENSHOT,
   TRANSACTIONS,
   TRANSACTIONS_LEGACY,
   WAYLAND,
@@ -38,8 +37,6 @@ export enum TraceType {
   SHELL_TRANSITION,
   TRANSITION,
   CUJS,
-  TAG,
-  ERROR,
   TEST_TRACE_STRING,
   TEST_TRACE_NUMBER,
   VIEW_CAPTURE,
@@ -48,36 +45,41 @@ export enum TraceType {
   VIEW_CAPTURE_TASKBAR_OVERLAY_DRAG_LAYER,
 }
 
-// view capture types
-export type ViewNode = any;
-export type FrameData = any;
+export type ImeTraceType =
+  | TraceType.INPUT_METHOD_CLIENTS
+  | TraceType.INPUT_METHOD_MANAGER_SERVICE
+  | TraceType.INPUT_METHOD_SERVICE;
+export type ViewCaptureTraceType =
+  | TraceType.VIEW_CAPTURE
+  | TraceType.VIEW_CAPTURE_LAUNCHER_ACTIVITY
+  | TraceType.VIEW_CAPTURE_TASKBAR_DRAG_LAYER
+  | TraceType.VIEW_CAPTURE_TASKBAR_OVERLAY_DRAG_LAYER;
 
 export interface TraceEntryTypeMap {
-  [TraceType.PROTO_LOG]: LogMessage;
+  [TraceType.PROTO_LOG]: PropertyTreeNode;
   [TraceType.SURFACE_FLINGER]: HierarchyTreeNode;
   [TraceType.SCREEN_RECORDING]: ScreenRecordingTraceEntry;
+  [TraceType.SCREENSHOT]: ScreenRecordingTraceEntry;
   [TraceType.SYSTEM_UI]: object;
-  [TraceType.TRANSACTIONS]: object;
+  [TraceType.TRANSACTIONS]: PropertyTreeNode;
   [TraceType.TRANSACTIONS_LEGACY]: object;
   [TraceType.WAYLAND]: object;
   [TraceType.WAYLAND_DUMP]: object;
-  [TraceType.WINDOW_MANAGER]: WindowManagerState;
-  [TraceType.INPUT_METHOD_CLIENTS]: object;
-  [TraceType.INPUT_METHOD_MANAGER_SERVICE]: object;
-  [TraceType.INPUT_METHOD_SERVICE]: object;
-  [TraceType.EVENT_LOG]: Event;
-  [TraceType.WM_TRANSITION]: object;
-  [TraceType.SHELL_TRANSITION]: object;
-  [TraceType.TRANSITION]: Transition;
-  [TraceType.CUJS]: Cuj;
-  [TraceType.TAG]: object;
-  [TraceType.ERROR]: object;
+  [TraceType.WINDOW_MANAGER]: HierarchyTreeNode;
+  [TraceType.INPUT_METHOD_CLIENTS]: HierarchyTreeNode;
+  [TraceType.INPUT_METHOD_MANAGER_SERVICE]: HierarchyTreeNode;
+  [TraceType.INPUT_METHOD_SERVICE]: HierarchyTreeNode;
+  [TraceType.EVENT_LOG]: PropertyTreeNode;
+  [TraceType.WM_TRANSITION]: PropertyTreeNode;
+  [TraceType.SHELL_TRANSITION]: PropertyTreeNode;
+  [TraceType.TRANSITION]: PropertyTreeNode;
+  [TraceType.CUJS]: PropertyTreeNode;
   [TraceType.TEST_TRACE_STRING]: string;
   [TraceType.TEST_TRACE_NUMBER]: number;
-  [TraceType.VIEW_CAPTURE]: object;
-  [TraceType.VIEW_CAPTURE_LAUNCHER_ACTIVITY]: FrameData;
-  [TraceType.VIEW_CAPTURE_TASKBAR_DRAG_LAYER]: FrameData;
-  [TraceType.VIEW_CAPTURE_TASKBAR_OVERLAY_DRAG_LAYER]: FrameData;
+  [TraceType.VIEW_CAPTURE]: HierarchyTreeNode;
+  [TraceType.VIEW_CAPTURE_LAUNCHER_ACTIVITY]: HierarchyTreeNode;
+  [TraceType.VIEW_CAPTURE_TASKBAR_DRAG_LAYER]: HierarchyTreeNode;
+  [TraceType.VIEW_CAPTURE_TASKBAR_OVERLAY_DRAG_LAYER]: HierarchyTreeNode;
 }
 
 export class TraceTypeUtils {
@@ -92,26 +94,7 @@ export class TraceTypeUtils {
     TraceType.SCREEN_RECORDING,
   ];
 
-  private static DISPLAY_ORDER = [
-    TraceType.SCREEN_RECORDING,
-    TraceType.SURFACE_FLINGER,
-    TraceType.WINDOW_MANAGER,
-    TraceType.INPUT_METHOD_CLIENTS,
-    TraceType.INPUT_METHOD_MANAGER_SERVICE,
-    TraceType.INPUT_METHOD_SERVICE,
-    TraceType.TRANSACTIONS,
-    TraceType.TRANSACTIONS_LEGACY,
-    TraceType.PROTO_LOG,
-    TraceType.WM_TRANSITION,
-    TraceType.SHELL_TRANSITION,
-    TraceType.TRANSITION,
-    TraceType.VIEW_CAPTURE,
-    TraceType.VIEW_CAPTURE_LAUNCHER_ACTIVITY,
-    TraceType.VIEW_CAPTURE_TASKBAR_DRAG_LAYER,
-    TraceType.VIEW_CAPTURE_TASKBAR_OVERLAY_DRAG_LAYER,
-  ];
-
-  private static TRACES_WITH_VIEWERS = [
+  private static TRACES_WITH_VIEWERS_DISPLAY_ORDER = [
     TraceType.SCREEN_RECORDING,
     TraceType.SURFACE_FLINGER,
     TraceType.WINDOW_MANAGER,
@@ -129,22 +112,37 @@ export class TraceTypeUtils {
   ];
 
   static isTraceTypeWithViewer(t: TraceType): boolean {
-    return TraceTypeUtils.TRACES_WITH_VIEWERS.includes(t);
+    return TraceTypeUtils.TRACES_WITH_VIEWERS_DISPLAY_ORDER.includes(t);
   }
 
   static compareByUiPipelineOrder(t: TraceType, u: TraceType) {
-    const tIndex = TraceTypeUtils.findIndexInOrder(t, TraceTypeUtils.UI_PIPELINE_ORDER);
-    const uIndex = TraceTypeUtils.findIndexInOrder(u, TraceTypeUtils.UI_PIPELINE_ORDER);
+    const tIndex = TraceTypeUtils.findIndexInOrder(
+      t,
+      TraceTypeUtils.UI_PIPELINE_ORDER,
+    );
+    const uIndex = TraceTypeUtils.findIndexInOrder(
+      u,
+      TraceTypeUtils.UI_PIPELINE_ORDER,
+    );
     return tIndex >= 0 && uIndex >= 0 && tIndex < uIndex;
   }
 
   static compareByDisplayOrder(t: TraceType, u: TraceType) {
-    const tIndex = TraceTypeUtils.findIndexInOrder(t, TraceTypeUtils.DISPLAY_ORDER);
-    const uIndex = TraceTypeUtils.findIndexInOrder(u, TraceTypeUtils.DISPLAY_ORDER);
+    const tIndex = TraceTypeUtils.findIndexInOrder(
+      t,
+      TraceTypeUtils.TRACES_WITH_VIEWERS_DISPLAY_ORDER,
+    );
+    const uIndex = TraceTypeUtils.findIndexInOrder(
+      u,
+      TraceTypeUtils.TRACES_WITH_VIEWERS_DISPLAY_ORDER,
+    );
     return tIndex - uIndex;
   }
 
-  private static findIndexInOrder(traceType: TraceType, order: TraceType[]): number {
+  private static findIndexInOrder(
+    traceType: TraceType,
+    order: TraceType[],
+  ): number {
     return order.findIndex((type) => {
       return type === traceType;
     });

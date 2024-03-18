@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-import {android} from 'protos/surfaceflinger/udc/static';
+import {LayerCompositionType} from 'trace/layer_composition_type';
 import {Operation} from 'trace/tree_node/operations/operation';
 import {
   DUPLICATE_CHIP,
@@ -30,26 +30,23 @@ import {UiHierarchyTreeNode} from 'viewers/common/ui_hierarchy_tree_node';
 export class AddChips implements Operation<UiHierarchyTreeNode> {
   private relZParentIds: string[] = [];
 
-  apply(node: UiHierarchyTreeNode): UiHierarchyTreeNode {
+  apply(node: UiHierarchyTreeNode): void {
     this.addAllChipsExceptRelZParent(node);
     this.addRelZParentChips(node);
-    return node;
   }
 
   private addAllChipsExceptRelZParent(node: UiHierarchyTreeNode) {
     if (!node.isRoot()) {
-      //TODO: add CompositionType property to SF node in parser to avoid this proto dependency
-      const hwcCompositionType = node.getEagerPropertyByName('hwcCompositionType')?.getValue();
-      if (hwcCompositionType === android.surfaceflinger.HwcCompositionType.CLIENT) {
+      const compositionType = node
+        .getEagerPropertyByName('compositionType')
+        ?.getValue();
+      if (compositionType === LayerCompositionType.GPU) {
         node.addChip(GPU_CHIP);
-      } else if (
-        hwcCompositionType === android.surfaceflinger.HwcCompositionType.DEVICE ||
-        hwcCompositionType === android.surfaceflinger.HwcCompositionType.SOLID_COLOR
-      ) {
+      } else if (compositionType === LayerCompositionType.HWC) {
         node.addChip(HWC_CHIP);
       }
 
-      if (node.getEagerPropertyByName('isVisible')?.getValue()) {
+      if (node.getEagerPropertyByName('isComputedVisible')?.getValue()) {
         node.addChip(VISIBLE_CHIP);
       }
 
@@ -57,7 +54,9 @@ export class AddChips implements Operation<UiHierarchyTreeNode> {
         node.addChip(DUPLICATE_CHIP);
       }
 
-      const zOrderRelativeOfId = node.getEagerPropertyByName('zOrderRelativeOf')?.getValue();
+      const zOrderRelativeOfId = node
+        .getEagerPropertyByName('zOrderRelativeOf')
+        ?.getValue();
       if (zOrderRelativeOfId && zOrderRelativeOfId !== -1) {
         node.addChip(RELATIVE_Z_CHIP);
         this.relZParentIds.push(zOrderRelativeOfId);
@@ -68,7 +67,9 @@ export class AddChips implements Operation<UiHierarchyTreeNode> {
       }
     }
 
-    node.getAllChildren().forEach((child) => this.addAllChipsExceptRelZParent(child));
+    node
+      .getAllChildren()
+      .forEach((child) => this.addAllChipsExceptRelZParent(child));
   }
 
   private addRelZParentChips(node: UiHierarchyTreeNode) {

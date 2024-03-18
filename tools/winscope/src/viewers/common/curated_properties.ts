@@ -36,13 +36,13 @@ export interface SfCuratedProperties {
   calcCornerRadiusCrop: string;
   backgroundBlurRadius: string;
   reqColor: string;
-  reqShadowRadius: string;
   reqCornerRadius: string;
   inputTransform: PropertyTreeNode | undefined;
   inputRegion: string | undefined;
   focusable: string;
   cropTouchRegionWithItem: string;
   replaceTouchRegionWithCrop: string;
+  inputConfig: string;
   ignoreDestinationFrame: boolean;
   hasInputChannel: boolean;
 }

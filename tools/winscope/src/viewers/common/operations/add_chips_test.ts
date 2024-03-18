@@ -15,8 +15,8 @@
  */
 
 import {assertDefined} from 'common/assert_utils';
-import {android} from 'protos/surfaceflinger/udc/static';
-import {TreeNodeUtils} from 'test/unit/tree_node_utils';
+import {HierarchyTreeBuilder} from 'test/unit/hierarchy_tree_builder';
+import {LayerCompositionType} from 'trace/layer_composition_type';
 import {
   DUPLICATE_CHIP,
   GPU_CHIP,
@@ -34,128 +34,164 @@ describe('AddChips', () => {
   let operation: AddChips;
 
   beforeEach(() => {
-    hierarchyRoot = TreeNodeUtils.makeUiHierarchyNode({
-      id: 'test',
-      name: 'root',
-    });
     operation = new AddChips();
   });
 
   it('adds GPU_CHIP', () => {
-    const layer = TreeNodeUtils.makeUiHierarchyNode({
-      id: 1,
-      name: 'node',
-      hwcCompositionType: android.surfaceflinger.HwcCompositionType.CLIENT,
-    });
-    hierarchyRoot.addChild(layer);
-    layer.setZParent(hierarchyRoot);
-
-    expect(assertDefined(operation.apply(hierarchyRoot).getChildById('1 node')).getChips()).toEqual(
-      [GPU_CHIP]
+    hierarchyRoot = UiHierarchyTreeNode.from(
+      new HierarchyTreeBuilder()
+        .setId('test')
+        .setName('node')
+        .setChildren([
+          {
+            id: 1,
+            name: 'node',
+            properties: {compositionType: LayerCompositionType.GPU},
+          },
+        ])
+        .build(),
     );
+
+    operation.apply(hierarchyRoot);
+    expect(
+      assertDefined(hierarchyRoot.getChildByName('node')).getChips(),
+    ).toEqual([GPU_CHIP]);
   });
 
   it('adds HWC_CHIP', () => {
-    const layerDevice = TreeNodeUtils.makeUiHierarchyNode({
-      id: 1,
-      name: 'node',
-      hwcCompositionType: android.surfaceflinger.HwcCompositionType.DEVICE,
-    });
-    hierarchyRoot.addChild(layerDevice);
-    layerDevice.setZParent(hierarchyRoot);
+    hierarchyRoot = UiHierarchyTreeNode.from(
+      new HierarchyTreeBuilder()
+        .setId('test')
+        .setName('node')
+        .setChildren([
+          {
+            id: 1,
+            name: 'node',
+            properties: {compositionType: LayerCompositionType.HWC},
+          },
+        ])
+        .build(),
+    );
 
-    const layerSolidColor = TreeNodeUtils.makeUiHierarchyNode({
-      id: 2,
-      name: 'node',
-      hwcCompositionType: android.surfaceflinger.HwcCompositionType.SOLID_COLOR,
-    });
-    hierarchyRoot.addChild(layerSolidColor);
-    layerSolidColor.setZParent(hierarchyRoot);
-
-    const rootWithChips = operation.apply(hierarchyRoot);
-    expect(assertDefined(rootWithChips.getChildById('1 node')).getChips()).toEqual([HWC_CHIP]);
-    expect(assertDefined(rootWithChips.getChildById('2 node')).getChips()).toEqual([HWC_CHIP]);
+    operation.apply(hierarchyRoot);
+    expect(
+      assertDefined(hierarchyRoot.getChildByName('node')).getChips(),
+    ).toEqual([HWC_CHIP]);
   });
 
   it('adds VISIBLE_CHIP', () => {
-    const layer = TreeNodeUtils.makeUiHierarchyNode({
-      id: 1,
-      name: 'node',
-      isVisible: true,
-    });
-    hierarchyRoot.addChild(layer);
-    layer.setZParent(hierarchyRoot);
-
-    expect(assertDefined(operation.apply(hierarchyRoot).getChildById('1 node')).getChips()).toEqual(
-      [VISIBLE_CHIP]
+    hierarchyRoot = UiHierarchyTreeNode.from(
+      new HierarchyTreeBuilder()
+        .setId('test')
+        .setName('node')
+        .setChildren([
+          {
+            id: 1,
+            name: 'node',
+            properties: {isComputedVisible: true},
+          },
+        ])
+        .build(),
     );
+
+    operation.apply(hierarchyRoot);
+    expect(
+      assertDefined(hierarchyRoot.getChildByName('node')).getChips(),
+    ).toEqual([VISIBLE_CHIP]);
   });
 
   it('adds DUPLICATE_CHIP', () => {
-    const layer = TreeNodeUtils.makeUiHierarchyNode({
-      id: 1,
-      name: 'node',
-      isDuplicate: true,
-    });
-    hierarchyRoot.addChild(layer);
-    layer.setZParent(hierarchyRoot);
-
-    expect(assertDefined(operation.apply(hierarchyRoot).getChildById('1 node')).getChips()).toEqual(
-      [DUPLICATE_CHIP]
+    hierarchyRoot = UiHierarchyTreeNode.from(
+      new HierarchyTreeBuilder()
+        .setId('test')
+        .setName('node')
+        .setChildren([
+          {
+            id: 1,
+            name: 'node',
+            properties: {isDuplicate: true},
+          },
+        ])
+        .build(),
     );
+
+    operation.apply(hierarchyRoot);
+    expect(
+      assertDefined(hierarchyRoot.getChildByName('node')).getChips(),
+    ).toEqual([DUPLICATE_CHIP]);
   });
 
   it('adds RELATIVE_Z_CHIP', () => {
-    const layer = TreeNodeUtils.makeUiHierarchyNode({
-      id: 1,
-      name: 'node',
-      zOrderRelativeOf: 2,
-    });
-    hierarchyRoot.addChild(layer);
-    layer.setZParent(hierarchyRoot);
-
-    expect(assertDefined(operation.apply(hierarchyRoot).getChildById('1 node')).getChips()).toEqual(
-      [RELATIVE_Z_CHIP]
+    hierarchyRoot = UiHierarchyTreeNode.from(
+      new HierarchyTreeBuilder()
+        .setId('test')
+        .setName('node')
+        .setChildren([
+          {
+            id: 1,
+            name: 'node',
+            properties: {zOrderRelativeOf: 2},
+          },
+        ])
+        .build(),
     );
+
+    operation.apply(hierarchyRoot);
+    expect(
+      assertDefined(hierarchyRoot.getChildByName('node')).getChips(),
+    ).toEqual([RELATIVE_Z_CHIP]);
   });
 
   it('adds MISSING_Z_PARENT_CHIP', () => {
-    const layer = TreeNodeUtils.makeUiHierarchyNode({
-      id: 1,
-      name: 'node',
-      zOrderRelativeOf: 2,
-      isMissingZParent: true,
-    });
-    hierarchyRoot.addChild(layer);
-    layer.setZParent(hierarchyRoot);
-
-    expect(assertDefined(operation.apply(hierarchyRoot).getChildById('1 node')).getChips()).toEqual(
-      [RELATIVE_Z_CHIP, MISSING_Z_PARENT_CHIP]
+    hierarchyRoot = UiHierarchyTreeNode.from(
+      new HierarchyTreeBuilder()
+        .setId('test')
+        .setName('node')
+        .setChildren([
+          {
+            id: 1,
+            name: 'node',
+            properties: {zOrderRelativeOf: 2, isMissingZParent: true},
+          },
+        ])
+        .build(),
     );
+
+    operation.apply(hierarchyRoot);
+    expect(
+      assertDefined(hierarchyRoot.getChildByName('node')).getChips(),
+    ).toEqual([RELATIVE_Z_CHIP, MISSING_Z_PARENT_CHIP]);
   });
 
   it('adds RELATIVE_Z_PARENT_CHIP', () => {
-    const childLayer = TreeNodeUtils.makeUiHierarchyNode({
-      id: 1,
-      name: 'node',
-      zOrderRelativeOf: 2,
-    });
-    const parentLayer = TreeNodeUtils.makeUiHierarchyNode({
-      id: 2,
-      name: 'parentNode',
-      zOrderRelativeOf: -1,
-    });
-    parentLayer.addChild(childLayer);
-    childLayer.setZParent(parentLayer);
+    hierarchyRoot = UiHierarchyTreeNode.from(
+      new HierarchyTreeBuilder()
+        .setId('test')
+        .setName('node')
+        .setChildren([
+          {
+            id: 2,
+            name: 'parentNode',
+            properties: {id: 2, zOrderRelativeOf: -1},
+            children: [
+              {
+                id: 1,
+                name: 'node',
+                properties: {id: 1, zOrderRelativeOf: 2},
+              },
+            ],
+          },
+        ])
+        .build(),
+    );
 
-    hierarchyRoot.addChild(parentLayer);
-    parentLayer.setZParent(hierarchyRoot);
-
-    const root = operation.apply(hierarchyRoot);
-    const parentWithChips = assertDefined(root.getChildById('2 parentNode'));
+    operation.apply(hierarchyRoot);
+    const parentWithChips = assertDefined(
+      hierarchyRoot.getChildByName('parentNode'),
+    );
     expect(parentWithChips.getChips()).toEqual([RELATIVE_Z_PARENT_CHIP]);
-    expect(assertDefined(parentWithChips.getChildById('1 node')).getChips()).toEqual([
-      RELATIVE_Z_CHIP,
-    ]);
+    expect(
+      assertDefined(parentWithChips.getChildByName('node')).getChips(),
+    ).toEqual([RELATIVE_Z_CHIP]);
   });
 });

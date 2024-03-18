@@ -43,24 +43,17 @@ import {BrowserModule, Title} from '@angular/platform-browser';
 import {BrowserAnimationsModule} from '@angular/platform-browser/animations';
 import {CoordinatesTableComponent} from 'viewers/components/coordinates_table_component';
 import {HierarchyComponent} from 'viewers/components/hierarchy_component';
+import {HierarchyTreeNodeDataViewComponent} from 'viewers/components/hierarchy_tree_node_data_view_component';
 import {ImeAdditionalPropertiesComponent} from 'viewers/components/ime_additional_properties_component';
-import {CoordinatesTableComponentLegacy} from 'viewers/components/legacy/coordinates_table_component';
-import {HierarchyComponentLegacy} from 'viewers/components/legacy/hierarchy_component';
-import {PropertiesComponentLegacy} from 'viewers/components/legacy/properties_component';
-import {TreeComponentLegacy} from 'viewers/components/legacy/tree_component';
-import {TreeNodeComponentLegacy} from 'viewers/components/legacy/tree_node_component';
-import {TreeNodeDataViewComponentLegacy} from 'viewers/components/legacy/tree_node_data_view_component';
-import {TreeNodePropertiesDataViewComponentLegacy} from 'viewers/components/legacy/tree_node_properties_data_view_component';
-import {ViewCapturePropertyGroupsComponentLegacy} from 'viewers/components/legacy/view_capture_property_groups_component';
 import {PropertiesComponent} from 'viewers/components/properties_component';
 import {PropertiesTableComponent} from 'viewers/components/properties_table_component';
+import {PropertyTreeNodeDataViewComponent} from 'viewers/components/property_tree_node_data_view_component';
 import {RectsComponent} from 'viewers/components/rects/rects_component';
+import {SelectWithFilterComponent} from 'viewers/components/select_with_filter_component';
 import {SurfaceFlingerPropertyGroupsComponent} from 'viewers/components/surface_flinger_property_groups_component';
 import {TransformMatrixComponent} from 'viewers/components/transform_matrix_component';
 import {TreeComponent} from 'viewers/components/tree_component';
 import {TreeNodeComponent} from 'viewers/components/tree_node_component';
-import {TreeNodeDataViewComponent} from 'viewers/components/tree_node_data_view_component';
-import {TreeNodePropertiesDataViewComponent} from 'viewers/components/tree_node_properties_data_view_component';
 import {ViewerInputMethodComponent} from 'viewers/components/viewer_input_method_component';
 import {ViewCapturePropertyGroupsComponent} from 'viewers/components/view_capture_property_groups_component';
 import {ProtologScrollDirective} from 'viewers/viewer_protolog/scroll_strategy/protolog_scroll_directive';
@@ -110,25 +103,18 @@ import {WebAdbComponent} from './components/web_adb_component';
     WebAdbComponent,
     TraceConfigComponent,
     HierarchyComponent,
-    HierarchyComponentLegacy,
     PropertiesComponent,
-    PropertiesComponentLegacy,
     RectsComponent,
     TraceViewComponent,
     TreeComponent,
-    TreeComponentLegacy,
     TreeNodeComponent,
-    TreeNodeComponentLegacy,
-    TreeNodeDataViewComponent,
-    TreeNodeDataViewComponentLegacy,
-    TreeNodePropertiesDataViewComponent,
-    TreeNodePropertiesDataViewComponentLegacy,
+    HierarchyTreeNodeDataViewComponent,
+    PropertyTreeNodeDataViewComponent,
     SurfaceFlingerPropertyGroupsComponent,
     TransformMatrixComponent,
     PropertiesTableComponent,
     ImeAdditionalPropertiesComponent,
     CoordinatesTableComponent,
-    CoordinatesTableComponentLegacy,
     TimelineComponent,
     MiniTimelineComponent,
     ExpandedTimelineComponent,
@@ -143,7 +129,7 @@ import {WebAdbComponent} from './components/web_adb_component';
     ProtologScrollDirective,
     TransactionsScrollDirective,
     ViewCapturePropertyGroupsComponent,
-    ViewCapturePropertyGroupsComponentLegacy,
+    SelectWithFilterComponent,
   ],
   imports: [
     BrowserModule,

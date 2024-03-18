@@ -190,15 +190,20 @@ export class UploadTracesComponent implements ProgressListener {
 
   constructor(
     @Inject(ChangeDetectorRef) private changeDetectorRef: ChangeDetectorRef,
-    @Inject(NgZone) private ngZone: NgZone
+    @Inject(NgZone) private ngZone: NgZone,
   ) {}
 
   ngOnInit() {
     this.tracePipeline.clear();
   }
 
-  onProgressUpdate(message: string | undefined, progressPercentage: number | undefined) {
-    if (!LoadProgressComponent.canUpdateComponent(this.lastUiProgressUpdateTimeMs)) {
+  onProgressUpdate(
+    message: string | undefined,
+    progressPercentage: number | undefined,
+  ) {
+    if (
+      !LoadProgressComponent.canUpdateComponent(this.lastUiProgressUpdateTimeMs)
+    ) {
       return;
     }
     this.isLoadingFiles = true;
@@ -257,7 +262,9 @@ export class UploadTracesComponent implements ProgressListener {
     return this.ngZone.run(() => {
       let hasFilesWithViewers = false;
       this.tracePipeline.getTraces().forEachTrace((trace) => {
-        if (TraceTypeUtils.isTraceTypeWithViewer(trace.type)) hasFilesWithViewers = true;
+        if (TraceTypeUtils.isTraceTypeWithViewer(trace.type)) {
+          hasFilesWithViewers = true;
+        }
       });
 
       return hasFilesWithViewers;

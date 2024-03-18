@@ -15,7 +15,10 @@
  */
 
 import {TreeNodeUtils} from 'test/unit/tree_node_utils';
-import {PropertySource, PropertyTreeNode} from 'trace/tree_node/property_tree_node';
+import {
+  PropertySource,
+  PropertyTreeNode,
+} from 'trace/tree_node/property_tree_node';
 import {AddExcludesCompositionState} from './add_excludes_composition_state';
 
 describe('AddExcludesCompositionState', () => {
@@ -24,29 +27,41 @@ describe('AddExcludesCompositionState', () => {
   let operation: AddExcludesCompositionState;
 
   beforeEach(() => {
-    propertyRoot = new PropertyTreeNode('test node', 'node', PropertySource.PROTO, undefined);
-    expectedRoot = new PropertyTreeNode('test node', 'node', PropertySource.PROTO, undefined);
+    propertyRoot = new PropertyTreeNode(
+      'test node',
+      'node',
+      PropertySource.PROTO,
+      undefined,
+    );
+    expectedRoot = new PropertyTreeNode(
+      'test node',
+      'node',
+      PropertySource.PROTO,
+      undefined,
+    );
   });
 
   it('creates excludesCompositionState node with true value', () => {
     operation = new AddExcludesCompositionState(true);
     const expectedResult = TreeNodeUtils.makeCalculatedPropertyNode(
-      'test node',
+      expectedRoot.id,
       'excludesCompositionState',
-      true
+      true,
     );
-    expectedRoot.addChild(expectedResult);
-    expect(operation.apply(propertyRoot)).toEqual(expectedRoot);
+    expectedRoot.addOrReplaceChild(expectedResult);
+    operation.apply(propertyRoot);
+    expect(propertyRoot).toEqual(expectedRoot);
   });
 
   it('creates excludesCompositionState node with false value', () => {
     operation = new AddExcludesCompositionState(false);
     const expectedResult = TreeNodeUtils.makeCalculatedPropertyNode(
-      'test node',
+      expectedRoot.id,
       'excludesCompositionState',
-      false
+      false,
     );
-    expectedRoot.addChild(expectedResult);
-    expect(operation.apply(propertyRoot)).toEqual(expectedRoot);
+    expectedRoot.addOrReplaceChild(expectedResult);
+    operation.apply(propertyRoot);
+    expect(propertyRoot).toEqual(expectedRoot);
   });
 });
