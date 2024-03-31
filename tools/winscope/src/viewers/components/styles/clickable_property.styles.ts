@@ -14,8 +14,19 @@
  * limitations under the License.
  */
 
-export class TimeUtils {
-  static async sleepMs(ms: number) {
-    await new Promise<void>((resolve) => setTimeout(resolve, ms));
-  }
-}
+export const timeButtonStyle = `
+    .time button {
+      padding: 0px;
+      line-height: normal;
+      text-align: left;
+    }
+`;
+
+export const inlineButtonStyle = `
+    .inline button {
+      padding: 0px;
+      min-width: fit-content;
+      line-height: normal;
+      text-align: left;
+    }
+`;

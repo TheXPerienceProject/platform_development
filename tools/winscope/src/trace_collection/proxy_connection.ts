@@ -16,6 +16,7 @@
 
 import {assertDefined} from 'common/assert_utils';
 import {FunctionUtils, OnProgressUpdateType} from 'common/function_utils';
+import {TimeUtils} from 'common/time_utils';
 import {
   DeviceProperties,
   proxyClient,
@@ -32,7 +33,7 @@ import {
 
 export class ProxyConnection implements Connection {
   proxy = proxyClient;
-  keep_alive_worker: NodeJS.Timer | undefined;
+  keep_alive_worker: NodeJS.Timeout | undefined;
   notConnected = [
     ProxyState.NO_PROXY,
     ProxyState.UNAUTH,
@@ -177,6 +178,8 @@ export class ProxyConnection implements Connection {
       requestedTraces,
       (request: XMLHttpRequest) => this.keepAliveTrace(this),
     );
+    // TODO(b/330118129): identify source of additional start latency that affects some traces
+    await TimeUtils.sleepMs(1000); // 1s timeout ensures SR fully started
     proxyClient.setState(ProxyState.END_TRACE);
   }
 
