@@ -21,6 +21,7 @@ import {
   Input,
   OnDestroy,
   OnInit,
+  SimpleChange,
   SimpleChanges,
 } from '@angular/core';
 import {assertDefined} from 'common/assert_utils';
@@ -36,16 +37,9 @@ import {Distance2D} from './types3d';
 @Component({
   selector: 'rects-view',
   template: `
-    <div class="view-controls">
-      <h2 class="mat-title">{{ title }}</h2>
-      <div class="top-view-controls">
-        <mat-checkbox
-          color="primary"
-          class="show-only-visible"
-          [checked]="getShowOnlyVisibleMode()"
-          (change)="onShowOnlyVisibleModeChange($event.checked!)"
-          >Only visible
-        </mat-checkbox>
+    <div class="view-controls view-header">
+      <div class="title-zoom">
+        <h2 class="mat-title">{{ title.toUpperCase() }}</h2>
         <div class="right-btn-container">
           <button color="primary" mat-icon-button (click)="onZoomInClick()">
             <mat-icon aria-hidden="true"> zoom_in </mat-icon>
@@ -62,30 +56,41 @@ import {Distance2D} from './types3d';
           </button>
         </div>
       </div>
-      <div class="slider-view-controls">
-        <div class="slider-container">
-          <p class="slider-label mat-body-2">Rotation</p>
-          <mat-slider
-            class="slider-rotation"
-            step="0.02"
-            min="0"
-            max="1"
-            aria-label="units"
-            [value]="mapper3d.getCameraRotationFactor()"
-            (input)="onRotationSliderChange($event.value!)"
-            color="primary"></mat-slider>
-        </div>
-        <div class="slider-container">
-          <p class="slider-label mat-body-2">Spacing</p>
-          <mat-slider
-            class="slider-spacing"
-            step="0.02"
-            min="0.02"
-            max="1"
-            aria-label="units"
-            [value]="getZSpacingFactor()"
-            (input)="onSeparationSliderChange($event.value!)"
-            color="primary"></mat-slider>
+      <div class="top-view-controls">
+        <mat-checkbox
+          color="primary"
+          class="show-only-visible"
+          [checked]="getShowOnlyVisibleMode()"
+          (change)="onShowOnlyVisibleModeChange($event.checked!)"
+          >Only visible
+        </mat-checkbox>
+        <div class="slider-view-controls">
+          <div class="slider-container">
+            <p class="slider-label mat-body-1">Rotation</p>
+            <mat-slider
+              class="slider-rotation"
+              step="0.02"
+              min="0"
+              max="1"
+              aria-label="units"
+              [value]="mapper3d.getCameraRotationFactor()"
+              (input)="onRotationSliderChange($event.value)"
+              (focus)="$event.target.blur()"
+              color="primary"></mat-slider>
+          </div>
+          <div class="slider-container">
+            <p class="slider-label mat-body-1">Spacing</p>
+            <mat-slider
+              class="slider-spacing"
+              step="0.02"
+              min="0.02"
+              max="1"
+              aria-label="units"
+              [value]="getZSpacingFactor()"
+              (input)="onSeparationSliderChange($event.value)"
+              (focus)="$event.target.blur()"
+              color="primary"></mat-slider>
+          </div>
         </div>
       </div>
     </div>
@@ -108,6 +113,7 @@ import {Distance2D} from './types3d';
         class="grouping-tabs"
         mat-align-tabs="start"
         *ngIf="internalDisplays.length > 0"
+        (selectedTabChange)="blurTab()"
         dynamicHeight>
         <mat-tab label="Displays">
           <div class="display-button-container display-name-buttons">
@@ -137,24 +143,32 @@ import {Distance2D} from './types3d';
   `,
   styles: [
     `
+      .mat-title {
+        padding-top: 16px;
+      }
+      .title-zoom {
+        display: flex;
+        flex-direction: row;
+        justify-content: space-between;
+      }
       .view-controls {
         display: flex;
         flex-direction: column;
+      }
+      .right-btn-container {
+        padding-top: 8px;
       }
       .top-view-controls,
       .slider-view-controls {
         display: flex;
         flex-direction: row;
-        flex-wrap: wrap;
-        column-gap: 10px;
-        align-items: center;
-        margin-bottom: 12px;
+        align-items: baseline;
       }
-      .right-btn-container {
-        margin-left: auto;
+      .top-view-controls {
+        justify-content: space-between;
       }
       .slider-view-controls {
-        justify-content: space-between;
+        column-gap: 10px;
       }
       .slider-container {
         position: relative;
@@ -257,16 +271,15 @@ export class RectsComponent implements OnInit, OnDestroy {
   }
 
   ngOnInit() {
-    const canvasContainer =
+    const canvasContainer: HTMLElement =
       this.elementRef.nativeElement.querySelector('.canvas-container');
     this.resizeObserver.observe(canvasContainer);
 
     this.largeRectsCanvasElement = canvasContainer.querySelector(
       '.large-rects-canvas',
     )! as HTMLCanvasElement;
-    this.largeRectsLabelsElement = canvasContainer.querySelector(
-      '.large-rects-labels',
-    );
+    this.largeRectsLabelsElement =
+      canvasContainer.querySelector('.large-rects-labels') ?? undefined;
     this.largeRectsCanvas = new Canvas(
       this.largeRectsCanvasElement,
       this.largeRectsLabelsElement!,
@@ -279,7 +292,10 @@ export class RectsComponent implements OnInit, OnDestroy {
       this.updateControlsFromStore();
     }
 
-    this.currentDisplay = this.internalDisplays[0] ?? undefined;
+    this.currentDisplay =
+      this.internalDisplays.length > 0
+        ? this.getFirstDisplayWithRectsOrFirstDisplay(this.internalDisplays)
+        : undefined;
     this.mapper3d.setCurrentGroupId(this.currentDisplay?.groupId ?? 0);
     this.mapper3d.increaseZoomFactor(this.zoomFactor - 1);
     this.drawLargeRectsAndLabels();
@@ -291,6 +307,10 @@ export class RectsComponent implements OnInit, OnDestroy {
     if (this.miniRects) {
       this.drawMiniRects();
     }
+  }
+
+  blurTab() {
+    (document.activeElement as HTMLElement).blur();
   }
 
   ngOnChanges(simpleChanges: SimpleChanges) {
@@ -309,7 +329,7 @@ export class RectsComponent implements OnInit, OnDestroy {
       }
     }
     if (simpleChanges['displays']) {
-      this.onDisplaysChange(simpleChanges['displays'].currentValue);
+      this.onDisplaysChange(simpleChanges['displays']);
       if (this.isStackBased) {
         this.internalGroupIds = new Set(
           this.internalDisplays.map((display) => display.groupId),
@@ -326,10 +346,18 @@ export class RectsComponent implements OnInit, OnDestroy {
     this.resizeObserver?.disconnect();
   }
 
-  onDisplaysChange(displays: DisplayIdentifier[]) {
+  onDisplaysChange(change: SimpleChange) {
+    const displays = change.currentValue;
     this.internalDisplays = displays;
 
     if (displays.length === 0) {
+      return;
+    }
+
+    if (change.firstChange) {
+      this.updateCurrentDisplay(
+        this.getFirstDisplayWithRectsOrFirstDisplay(this.internalDisplays),
+      );
       return;
     }
 
@@ -343,11 +371,13 @@ export class RectsComponent implements OnInit, OnDestroy {
       }
     }
 
-    const firstDisplayWithCurrentGroupId = this.internalDisplays.find(
+    const displaysWithCurrentGroupId = this.internalDisplays.filter(
       (display) => display.groupId === this.mapper3d.getCurrentGroupId(),
     );
-    if (!firstDisplayWithCurrentGroupId) {
-      this.updateCurrentDisplay(this.internalDisplays[0]);
+    if (displaysWithCurrentGroupId.length === 0) {
+      this.updateCurrentDisplay(
+        this.getFirstDisplayWithRectsOrFirstDisplay(this.internalDisplays),
+      );
       return;
     }
 
@@ -355,7 +385,9 @@ export class RectsComponent implements OnInit, OnDestroy {
       (display) => display.displayId === this.currentDisplay?.displayId,
     );
     if (!displayWithCurrentDisplayId) {
-      this.updateCurrentDisplay(firstDisplayWithCurrentGroupId);
+      this.updateCurrentDisplay(
+        this.getFirstDisplayWithRectsOrFirstDisplay(displaysWithCurrentGroupId),
+      );
       return;
     }
 
@@ -456,7 +488,9 @@ export class RectsComponent implements OnInit, OnDestroy {
       displaysWithGroupId.length > 0 &&
       !displaysWithGroupId.includes(this.currentDisplay)
     ) {
-      this.updateCurrentDisplay(displaysWithGroupId[0]);
+      this.updateCurrentDisplay(
+        this.getFirstDisplayWithRectsOrFirstDisplay(displaysWithGroupId),
+      );
     }
   }
 
@@ -532,6 +566,18 @@ export class RectsComponent implements OnInit, OnDestroy {
     return this.currentDisplay.groupId === groupId ? 'primary' : 'secondary';
   }
 
+  private getFirstDisplayWithRectsOrFirstDisplay(
+    displays: DisplayIdentifier[],
+  ): DisplayIdentifier {
+    return (
+      displays.find((display) =>
+        this.internalRects.some(
+          (rect) => !rect.isDisplay && rect.groupId === display.groupId,
+        ),
+      ) ?? assertDefined(displays.at(0))
+    );
+  }
+
   private updateCurrentDisplay(display: DisplayIdentifier) {
     this.currentDisplay = display;
     this.mapper3d.setCurrentGroupId(display.groupId);
@@ -596,10 +642,13 @@ export class RectsComponent implements OnInit, OnDestroy {
   }
 
   private notifyHighlightedItem(id: string) {
-    const event: CustomEvent = new CustomEvent(ViewerEvents.HighlightedChange, {
-      bubbles: true,
-      detail: {id},
-    });
+    const event: CustomEvent = new CustomEvent(
+      ViewerEvents.HighlightedIdChange,
+      {
+        bubbles: true,
+        detail: {id},
+      },
+    );
     this.elementRef.nativeElement.dispatchEvent(event);
   }
 }

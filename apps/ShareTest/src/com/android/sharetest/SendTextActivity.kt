@@ -14,10 +14,22 @@
  * limitations under the License.
  */
 
-export const timeButtonStyle = `
-    .time button {
-      padding: 0px;
-      line-height: normal;
-      text-align: left;
+package com.android.sharetest
+
+import android.content.Intent
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.material3.Text
+
+class SendTextActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContent {
+            val text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()
+            Text(
+                 text ?: "NOT SET",
+            )
+        }
     }
-`;
+}

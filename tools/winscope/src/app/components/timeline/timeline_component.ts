@@ -35,8 +35,9 @@ import {FunctionUtils} from 'common/function_utils';
 import {StringUtils} from 'common/string_utils';
 import {Timestamp, TimestampType} from 'common/time';
 import {NO_TIMEZONE_OFFSET_FACTORY} from 'common/timestamp_factory';
-import {TimeUtils} from 'common/time_utils';
+import {TimestampUtils} from 'common/timestamp_utils';
 import {
+  ExpandedTimelineToggled,
   TracePositionUpdate,
   WinscopeEvent,
   WinscopeEventType,
@@ -68,124 +69,146 @@ import {TraceType, TraceTypeUtils} from 'trace/trace_type';
       <expanded-timeline
         [timelineData]="timelineData"
         (onTracePositionUpdate)="updatePosition($event)"
+        (onScrollEvent)="updateScrollEvent($event)"
         id="expanded-timeline"></expanded-timeline>
     </div>
-    <div class="navbar" #collapsedTimeline>
-      <ng-template [ngIf]="timelineData.hasMoreThanOneDistinctTimestamp()">
-        <div id="time-selector">
-          <button
-            mat-icon-button
-            id="prev_entry_button"
-            color="primary"
-            (click)="moveToPreviousEntry()"
-            [disabled]="!hasPrevEntry()">
-            <mat-icon>chevron_left</mat-icon>
-          </button>
-          <form [formGroup]="timestampForm" class="time-selector-form">
-            <mat-form-field
-              class="time-input elapsed"
-              appearance="fill"
-              (keydown.enter)="onKeydownEnterElapsedTimeInputField($event)"
-              (change)="onHumanElapsedTimeInputChange($event)"
-              *ngIf="!usingRealtime()">
-              <input
-                matInput
-                name="humanElapsedTimeInput"
-                [formControl]="selectedElapsedTimeFormControl" />
+    <div class="navbar-toggle">
+    <div id="toggle" *ngIf="timelineData.hasMoreThanOneDistinctTimestamp()">
+      <button
+        mat-icon-button
+        [class]="TOGGLE_BUTTON_CLASS"
+        color="basic"
+        aria-label="Toggle Expanded Timeline"
+        (click)="toggleExpand()">
+          <mat-icon *ngIf="!expanded" class="material-symbols-outlined">expand_circle_up</mat-icon>
+          <mat-icon *ngIf="expanded" class="material-symbols-outlined">expand_circle_down</mat-icon>
+        </button>
+    </div>
+      <div class="navbar" #collapsedTimeline>
+        <ng-template [ngIf]="timelineData.hasMoreThanOneDistinctTimestamp()">
+          <div id="time-selector">
+            <button
+              mat-icon-button
+              id="prev_entry_button"
+              color="primary"
+              (click)="moveToPreviousEntry()"
+              [disabled]="!hasPrevEntry()">
+              <mat-icon>chevron_left</mat-icon>
+            </button>
+            <form [formGroup]="timestampForm" class="time-selector-form">
+              <mat-form-field
+                class="time-input elapsed"
+                appearance="fill"
+                (keydown.enter)="onKeydownEnterElapsedTimeInputField($event)"
+                (change)="onHumanElapsedTimeInputChange($event)"
+                *ngIf="!usingRealtime()">
+                <input
+                  matInput
+                  name="humanElapsedTimeInput"
+                  [formControl]="selectedElapsedTimeFormControl" />
+              </mat-form-field>
+              <mat-form-field
+                class="time-input real"
+                appearance="fill"
+                (keydown.enter)="onKeydownEnterRealTimeInputField($event)"
+                (change)="onHumanRealTimeInputChange($event)"
+                *ngIf="usingRealtime()">
+                <input
+                  matInput
+                  name="humanRealTimeInput"
+                  [formControl]="selectedRealTimeFormControl" />
+              </mat-form-field>
+              <mat-form-field
+                class="time-input nano"
+                appearance="fill"
+                (keydown.enter)="onKeydownEnterNanosecondsTimeInputField($event)"
+                (change)="onNanosecondsInputTimeChange($event)">
+                <input matInput name="nsTimeInput" [formControl]="selectedNsFormControl" />
+              </mat-form-field>
+            </form>
+            <button
+              mat-icon-button
+              id="next_entry_button"
+              color="primary"
+              (click)="moveToNextEntry()"
+              [disabled]="!hasNextEntry()">
+              <mat-icon>chevron_right</mat-icon>
+            </button>
+          </div>
+          <div id="trace-selector">
+            <mat-form-field appearance="none">
+              <mat-select #traceSelector [formControl]="selectedTracesFormControl" multiple>
+                <div class="tip">Select up to 2 additional traces to display.</div>
+                <mat-option
+                  *ngFor="let trace of sortedAvailableTraces"
+                  [value]="trace"
+                  [style]="{
+                    color: TRACE_INFO[trace].color,
+                    opacity: isOptionDisabled(trace) ? 0.5 : 1.0
+                  }"
+                  [disabled]="isOptionDisabled(trace)"
+                  (click)="applyNewTraceSelection()">
+                  <mat-icon>{{ TRACE_INFO[trace].icon }}</mat-icon>
+                  {{ TRACE_INFO[trace].name }}
+                </mat-option>
+                <div class="actions">
+                  <button mat-flat-button color="primary" (click)="traceSelector.close()">
+                    Done
+                  </button>
+                </div>
+                <mat-select-trigger class="shown-selection">
+                  <mat-icon
+                    *ngFor="let selectedTrace of getSelectedTracesSortedByDisplayOrder()"
+                    [style]="{color: TRACE_INFO[selectedTrace].color}">
+                    {{ TRACE_INFO[selectedTrace].icon }}
+                  </mat-icon>
+                </mat-select-trigger>
+              </mat-select>
             </mat-form-field>
-            <mat-form-field
-              class="time-input real"
-              appearance="fill"
-              (keydown.enter)="onKeydownEnterRealTimeInputField($event)"
-              (change)="onHumanRealTimeInputChange($event)"
-              *ngIf="usingRealtime()">
-              <input
-                matInput
-                name="humanRealTimeInput"
-                [formControl]="selectedRealTimeFormControl" />
-            </mat-form-field>
-            <mat-form-field
-              class="time-input nano"
-              appearance="fill"
-              (keydown.enter)="onKeydownEnterNanosecondsTimeInputField($event)"
-              (change)="onNanosecondsInputTimeChange($event)">
-              <input matInput name="nsTimeInput" [formControl]="selectedNsFormControl" />
-            </mat-form-field>
-          </form>
-          <button
-            mat-icon-button
-            id="next_entry_button"
-            color="primary"
-            (click)="moveToNextEntry()"
-            [disabled]="!hasNextEntry()">
-            <mat-icon>chevron_right</mat-icon>
-          </button>
+          </div>
+          <mini-timeline
+            [timelineData]="timelineData"
+            [currentTracePosition]="getCurrentTracePosition()"
+            [selectedTraces]="selectedTraces"
+            [expandedTimelineScrollEvent]="expandedTimelineScrollEvent"
+            (onTracePositionUpdate)="updatePosition($event)"
+            (onSeekTimestampUpdate)="updateSeekTimestamp($event)"
+            id="mini-timeline"
+            #miniTimeline></mini-timeline>
+        </ng-template>
+        <div *ngIf="!timelineData.hasTimestamps()" class="no-timestamps-msg">
+          <p class="mat-body-2">No timeline to show!</p>
+          <p class="mat-body-1">All loaded traces contain no timestamps.</p>
         </div>
-        <div id="trace-selector">
-          <mat-form-field appearance="none">
-            <mat-select #traceSelector [formControl]="selectedTracesFormControl" multiple>
-              <div class="tip">Select up to 2 additional traces to display.</div>
-              <mat-option
-                *ngFor="let trace of sortedAvailableTraces"
-                [value]="trace"
-                [style]="{
-                  color: TRACE_INFO[trace].color,
-                  opacity: isOptionDisabled(trace) ? 0.5 : 1.0
-                }"
-                [disabled]="isOptionDisabled(trace)"
-                (click)="applyNewTraceSelection()">
-                <mat-icon>{{ TRACE_INFO[trace].icon }}</mat-icon>
-                {{ TRACE_INFO[trace].name }}
-              </mat-option>
-              <div class="actions">
-                <button mat-flat-button color="primary" (click)="traceSelector.close()">
-                  Done
-                </button>
-              </div>
-              <mat-select-trigger class="shown-selection">
-                <mat-icon
-                  *ngFor="let selectedTrace of getSelectedTracesSortedByDisplayOrder()"
-                  [style]="{color: TRACE_INFO[selectedTrace].color}">
-                  {{ TRACE_INFO[selectedTrace].icon }}
-                </mat-icon>
-              </mat-select-trigger>
-            </mat-select>
-          </mat-form-field>
+        <div
+          *ngIf="timelineData.hasTimestamps() && !timelineData.hasMoreThanOneDistinctTimestamp()"
+          class="no-timestamps-msg">
+          <p class="mat-body-2">No timeline to show!</p>
+          <p class="mat-body-1">Only a single timestamp has been recorded.</p>
         </div>
-        <mini-timeline
-          [timelineData]="timelineData"
-          [currentTracePosition]="getCurrentTracePosition()"
-          [selectedTraces]="selectedTraces"
-          (onTracePositionUpdate)="updatePosition($event)"
-          (onSeekTimestampUpdate)="updateSeekTimestamp($event)"
-          id="mini-timeline"
-          #miniTimeline></mini-timeline>
-        <div id="toggle" *ngIf="timelineData.hasMoreThanOneDistinctTimestamp()">
-          <button
-            mat-icon-button
-            [class]="TOGGLE_BUTTON_CLASS"
-            color="primary"
-            aria-label="Toggle Expanded Timeline"
-            (click)="toggleExpand()">
-            <mat-icon *ngIf="!expanded">expand_less</mat-icon>
-            <mat-icon *ngIf="expanded">expand_more</mat-icon>
-          </button>
-        </div>
-      </ng-template>
-      <div *ngIf="!timelineData.hasTimestamps()" class="no-timestamps-msg">
-        <p class="mat-body-2">No timeline to show!</p>
-        <p class="mat-body-1">All loaded traces contain no timestamps.</p>
-      </div>
-      <div
-        *ngIf="timelineData.hasTimestamps() && !timelineData.hasMoreThanOneDistinctTimestamp()"
-        class="no-timestamps-msg">
-        <p class="mat-body-2">No timeline to show!</p>
-        <p class="mat-body-1">Only a single timestamp has been recorded.</p>
       </div>
     </div>
   `,
   styles: [
     `
+      .navbar-toggle {
+        display: flex;
+        flex-direction: column;
+        align-items: end;
+        position: relative;
+      }
+      #toggle {
+        width: fit-content;
+        position: absolute;
+        top: -41px;
+        z-index: 1000;
+        border: 1px solid #3333;
+        border-bottom: 0px;
+        border-right: 0px;
+        border-top-left-radius: 6px;
+        border-top-right-radius: 6px;
+        background-color: #fafafa;
+      }
       .navbar {
         display: flex;
         width: 100%;
@@ -354,21 +377,21 @@ export class TimelineComponent
     'undefined',
     Validators.compose([
       Validators.required,
-      Validators.pattern(TimeUtils.HUMAN_ELAPSED_TIMESTAMP_REGEX),
+      Validators.pattern(TimestampUtils.HUMAN_ELAPSED_TIMESTAMP_REGEX),
     ]),
   );
   selectedRealTimeFormControl = new FormControl(
     'undefined',
     Validators.compose([
       Validators.required,
-      Validators.pattern(TimeUtils.HUMAN_REAL_TIMESTAMP_REGEX),
+      Validators.pattern(TimestampUtils.HUMAN_REAL_TIMESTAMP_REGEX),
     ]),
   );
   selectedNsFormControl = new FormControl(
     'undefined',
     Validators.compose([
       Validators.required,
-      Validators.pattern(TimeUtils.NS_TIMESTAMP_REGEX),
+      Validators.pattern(TimestampUtils.NS_TIMESTAMP_REGEX),
     ]),
   );
   timestampForm = new FormGroup({
@@ -381,6 +404,7 @@ export class TimelineComponent
 
   private expanded = false;
   private emitEvent: EmitEvent = FunctionUtils.DO_NOTHING_ASYNC;
+  private expandedTimelineScrollEvent: WheelEvent | undefined;
 
   constructor(
     @Inject(DomSanitizer) private sanitizer: DomSanitizer,
@@ -454,9 +478,10 @@ export class TimelineComponent
     });
   }
 
-  toggleExpand() {
+  async toggleExpand() {
     this.expanded = !this.expanded;
     this.changeDetectorRef.detectChanges();
+    await this.emitEvent(new ExpandedTimelineToggled(this.expanded));
   }
 
   async updatePosition(position: TracePosition) {
@@ -484,13 +509,15 @@ export class TimelineComponent
   private updateTimeInputValuesToCurrentTimestamp() {
     const currentNs = this.getCurrentTracePosition().timestamp.getValueNs();
     this.selectedElapsedTimeFormControl.setValue(
-      TimeUtils.format(
+      TimestampUtils.format(
         NO_TIMEZONE_OFFSET_FACTORY.makeElapsedTimestamp(currentNs),
         false,
       ),
     );
     this.selectedRealTimeFormControl.setValue(
-      TimeUtils.format(NO_TIMEZONE_OFFSET_FACTORY.makeRealTimestamp(currentNs)),
+      TimestampUtils.format(
+        NO_TIMEZONE_OFFSET_FACTORY.makeRealTimestamp(currentNs),
+      ),
     );
     this.selectedNsFormControl.setValue(
       `${this.getCurrentTracePosition().timestamp.getValueNs()} ns`,
@@ -618,7 +645,7 @@ export class TimelineComponent
       return;
     }
     const target = event.target as HTMLInputElement;
-    const timestamp = TimeUtils.parseHumanElapsed(target.value);
+    const timestamp = TimestampUtils.parseHumanElapsed(target.value);
     await this.updatePosition(
       assertDefined(this.timelineData).makePositionFromActiveTrace(timestamp),
     );
@@ -631,7 +658,7 @@ export class TimelineComponent
     }
     const target = event.target as HTMLInputElement;
 
-    const timestamp = TimeUtils.parseHumanReal(target.value);
+    const timestamp = TimestampUtils.parseHumanReal(target.value);
     await this.updatePosition(
       assertDefined(this.timelineData).makePositionFromActiveTrace(timestamp),
     );
@@ -672,5 +699,9 @@ export class TimelineComponent
     if (this.selectedNsFormControl.valid) {
       (event.target as HTMLInputElement).blur();
     }
+  }
+
+  updateScrollEvent(event: WheelEvent) {
+    this.expandedTimelineScrollEvent = event;
   }
 }

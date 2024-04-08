@@ -33,7 +33,35 @@ import {LoadProgressComponent} from './load_progress_component';
   selector: 'upload-traces',
   template: `
     <mat-card class="upload-card">
-      <mat-card-title class="title">Upload Traces</mat-card-title>
+      <div class="card-header">
+        <mat-card-title class="title">Upload Traces</mat-card-title>
+        <div
+          *ngIf="!isLoadingFiles && tracePipeline.getTraces().getSize() > 0"
+          class="trace-actions-container">
+          <button
+            color="primary"
+            mat-raised-button
+            class="load-btn"
+            matTooltip="Upload trace with an associated viewer to visualize"
+            [matTooltipDisabled]="hasLoadedFilesWithViewers()"
+            [disabled]="!hasLoadedFilesWithViewers()"
+            (click)="onViewTracesButtonClick()">
+            View traces
+          </button>
+
+          <button color="primary" mat-stroked-button for="fileDropRef" (click)="fileDropRef.click()">
+            Upload another file
+          </button>
+
+          <button
+            class="clear-all-btn"
+            color="primary"
+            mat-stroked-button
+            (click)="onClearButtonClick()">
+            Clear all
+          </button>
+        </div>
+      </div>
 
       <mat-card-content
         class="drop-box"
@@ -60,7 +88,7 @@ import {LoadProgressComponent} from './load_progress_component';
         <mat-list
           *ngIf="!isLoadingFiles && this.tracePipeline.getTraces().getSize() > 0"
           class="uploaded-files">
-          <mat-list-item *ngFor="let trace of this.tracePipeline.getTraces()">
+          <mat-list-item [class.no-visualization]="!canVisualizeTrace(trace)" *ngFor="let trace of this.tracePipeline.getTraces()">
             <mat-icon matListIcon>
               {{ TRACE_INFO[trace.type].icon }}
             </mat-icon>
@@ -68,6 +96,12 @@ import {LoadProgressComponent} from './load_progress_component';
             <p matLine>{{ TRACE_INFO[trace.type].name }}</p>
             <p matLine *ngFor="let descriptor of trace.getDescriptors()">{{ descriptor }}</p>
 
+            <mat-icon class="info-icon" *ngIf="traceUploadInfo(trace)" [matTooltip]="traceUploadInfo(trace)">
+              info
+            </mat-icon>
+            <mat-icon class="warning-icon" *ngIf="!canVisualizeTrace(trace)" [matTooltip]="cannotVisualizeTraceTooltip(trace)">
+              warning
+            </mat-icon>
             <button color="primary" mat-icon-button (click)="onRemoveTrace($event, trace)">
               <mat-icon>close</mat-icon>
             </button>
@@ -81,33 +115,6 @@ import {LoadProgressComponent} from './load_progress_component';
           <p class="mat-body-1">Drag your .winscope file(s) or click to upload</p>
         </div>
       </mat-card-content>
-
-      <div
-        *ngIf="!isLoadingFiles && tracePipeline.getTraces().getSize() > 0"
-        class="trace-actions-container">
-        <button
-          color="primary"
-          mat-raised-button
-          class="load-btn"
-          matTooltip="Upload trace with an associated viewer to visualise"
-          [matTooltipDisabled]="hasLoadedFilesWithViewers()"
-          [disabled]="!hasLoadedFilesWithViewers()"
-          (click)="onViewTracesButtonClick()">
-          View traces
-        </button>
-
-        <button color="primary" mat-stroked-button for="fileDropRef" (click)="fileDropRef.click()">
-          Upload another file
-        </button>
-
-        <button
-          class="clear-all-btn"
-          color="primary"
-          mat-stroked-button
-          (click)="onClearButtonClick()">
-          Clear all
-        </button>
-      </div>
     </mat-card>
   `,
   styles: [
@@ -118,6 +125,23 @@ import {LoadProgressComponent} from './load_progress_component';
         flex-direction: column;
         overflow: auto;
         margin: 10px;
+        padding-top: 0px;
+      }
+      .card-header {
+        justify-content: space-between;
+        align-items: center;
+        display: flex;
+        flex-direction: row;
+      }
+      .title {
+        padding-top: 16px;
+        text-align: center;
+      }
+      .trace-actions-container {
+        display: flex;
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 10px;
       }
       .drop-box {
         display: flex;
@@ -146,12 +170,6 @@ import {LoadProgressComponent} from './load_progress_component';
         font-size: 3rem;
         margin: 0;
       }
-      .trace-actions-container {
-        display: flex;
-        flex-direction: row;
-        flex-wrap: wrap;
-        gap: 10px;
-      }
       .div-progress {
         display: flex;
         height: 100%;
@@ -173,6 +191,12 @@ import {LoadProgressComponent} from './load_progress_component';
       }
       mat-card-content {
         flex-grow: 1;
+      }
+      .no-visualization {
+        background-color: #fff5bf;
+      }
+      .info-icon, .warning-icon {
+        flex-shrink: 0;
       }
     `,
   ],
@@ -269,6 +293,18 @@ export class UploadTracesComponent implements ProgressListener {
 
       return hasFilesWithViewers;
     });
+  }
+
+  traceUploadInfo(trace: Trace<object>): string | undefined {
+    return TraceTypeUtils.traceUploadInfo(trace.type);
+  }
+
+  canVisualizeTrace(trace: Trace<object>): boolean {
+    return TraceTypeUtils.canVisualizeTrace(trace.type);
+  }
+
+  cannotVisualizeTraceTooltip(trace: Trace<object>): string {
+    return TraceTypeUtils.getReasonForNoTraceVisualization(trace.type);
   }
 
   private getInputFiles(event: Event): File[] {
