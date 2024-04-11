@@ -28,10 +28,11 @@ import {
   AppFilesCollected,
   AppFilesUploaded,
   AppInitialized,
+  AppRefreshDumpsRequest,
   AppTraceViewRequest,
-  BuganizerAttachmentsDownloaded,
-  BuganizerAttachmentsDownloadStart,
   ExpandedTimelineToggled,
+  RemoteToolDownloadStart,
+  RemoteToolFilesReceived,
   RemoteToolTimestampReceived,
   TabbedViewSwitched,
   TabbedViewSwitchRequest,
@@ -78,7 +79,7 @@ describe('Mediator', () => {
   let appComponent: WinscopeEventListener;
   let timelineComponent: WinscopeEventEmitter & WinscopeEventListener;
   let uploadTracesComponent: ProgressListenerStub;
-  let collectTracesComponent: ProgressListenerStub;
+  let collectTracesComponent: ProgressListenerStub & WinscopeEventListenerStub;
   let traceViewComponent: WinscopeEventEmitter & WinscopeEventListener;
   let mediator: Mediator;
   let spies: Array<jasmine.Spy<any>>;
@@ -125,7 +126,10 @@ describe('Mediator', () => {
       new WinscopeEventListenerStub(),
     );
     uploadTracesComponent = new ProgressListenerStub();
-    collectTracesComponent = new ProgressListenerStub();
+    collectTracesComponent = FunctionUtils.mixin(
+      new ProgressListenerStub(),
+      new WinscopeEventListenerStub(),
+    );
     traceViewComponent = FunctionUtils.mixin(
       new WinscopeEventEmitterStub(),
       new WinscopeEventListenerStub(),
@@ -157,6 +161,7 @@ describe('Mediator', () => {
       spyOn(appComponent, 'onWinscopeEvent'),
       spyOn(collectTracesComponent, 'onOperationFinished'),
       spyOn(collectTracesComponent, 'onProgressUpdate'),
+      spyOn(collectTracesComponent, 'onWinscopeEvent'),
       spyOn(crossToolProtocol, 'onWinscopeEvent'),
       spyOn(timelineComponent, 'onWinscopeEvent'),
       spyOn(timelineData, 'initialize').and.callThrough(),
@@ -198,25 +203,40 @@ describe('Mediator', () => {
     await checkLoadTraceViewEvents(collectTracesComponent);
   });
 
+  it('handles request to refresh dumps', async () => {
+    const dumpFiles = [
+      await UnitTestUtils.getFixtureFile(
+        'traces/elapsed_and_real_timestamp/dump_SurfaceFlinger.pb',
+      ),
+      await UnitTestUtils.getFixtureFile('traces/dump_WindowManager.pb'),
+    ];
+    await loadFiles(dumpFiles);
+    await mediator.onWinscopeEvent(new AppTraceViewRequest());
+    await checkLoadTraceViewEvents(uploadTracesComponent);
+
+    await mediator.onWinscopeEvent(new AppRefreshDumpsRequest());
+    expect(collectTracesComponent.onWinscopeEvent).toHaveBeenCalled();
+  });
+
   //TODO: test "bugreport data from cross-tool protocol" when FileUtils is fully compatible with
   //      Node.js (b/262269229). FileUtils#unzipFile() currently can't execute on Node.js.
 
   //TODO: test "data from ABT chrome extension" when FileUtils is fully compatible with Node.js
   //      (b/262269229).
 
-  it('handles start download event from ABT chrome extension', async () => {
+  it('handles start download event from remote tool', async () => {
     expect(uploadTracesComponent.onProgressUpdate).toHaveBeenCalledTimes(0);
 
-    await mediator.onWinscopeEvent(new BuganizerAttachmentsDownloadStart());
+    await mediator.onWinscopeEvent(new RemoteToolDownloadStart());
     expect(uploadTracesComponent.onProgressUpdate).toHaveBeenCalledTimes(1);
   });
 
-  it('handles empty downloaded files from ABT chrome extension', async () => {
+  it('handles empty downloaded files from remote tool', async () => {
     expect(uploadTracesComponent.onOperationFinished).toHaveBeenCalledTimes(0);
 
     // Pass files even if empty so that the upload component will update the progress bar
     // and display error messages
-    await mediator.onWinscopeEvent(new BuganizerAttachmentsDownloaded([]));
+    await mediator.onWinscopeEvent(new RemoteToolFilesReceived([]));
     expect(uploadTracesComponent.onOperationFinished).toHaveBeenCalledTimes(1);
   });
 
@@ -468,8 +488,8 @@ describe('Mediator', () => {
     ]);
   });
 
-  async function loadFiles() {
-    await mediator.onWinscopeEvent(new AppFilesUploaded(inputFiles));
+  async function loadFiles(files = inputFiles) {
+    await mediator.onWinscopeEvent(new AppFilesUploaded(files));
     expect(userNotificationListener.onErrors).not.toHaveBeenCalled();
   }
 

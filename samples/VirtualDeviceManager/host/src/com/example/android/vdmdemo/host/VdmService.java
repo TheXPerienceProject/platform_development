@@ -46,6 +46,7 @@ import android.content.IntentSender.SendIntentException;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager.NameNotFoundException;
 import android.hardware.display.DisplayManager;
+import android.media.AudioManager;
 import android.os.Binder;
 import android.os.IBinder;
 import android.util.Log;
@@ -67,7 +68,6 @@ import dagger.hilt.android.AndroidEntryPoint;
 
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.Executors;
@@ -91,6 +91,8 @@ public final class VdmService extends Hilt_VdmService {
 
     public static final String ACTION_LOCKDOWN =
             "com.example.android.vdmdemo.host.VdmService.LOCKDOWN";
+    private int mRecordingAudioSessionId;
+    private int mPlaybackAudioSessionId;
 
     /** Provides an instance of this service to bound clients. */
     public class LocalBinder extends Binder {
@@ -279,6 +281,7 @@ public final class VdmService extends Hilt_VdmService {
             mPendingDisplayType = RemoteDisplay.DISPLAY_TYPE_APP;
             if (mPendingRemoteIntent != null) {
                 remoteDisplay.launchIntent(mPendingRemoteIntent);
+                mPendingRemoteIntent = null;
             }
         } else if (event.hasStopStreaming() && !event.getStopStreaming().getPause()) {
             mDisplayRepository.removeDisplayByRemoteId(event.getDisplayId());
@@ -289,11 +292,13 @@ public final class VdmService extends Hilt_VdmService {
 
     private void handleAudioCapabilities() {
         if (mPreferenceController.getBoolean(R.string.pref_enable_client_audio)) {
-            if (mDeviceCapabilities.getSupportsAudioOutput()) {
-                mAudioStreamer.start();
-            }
-            if (mDeviceCapabilities.getSupportsAudioInput()) {
-                mAudioInjector.start();
+            if (mVirtualDevice != null) {
+                if (mDeviceCapabilities.getSupportsAudioOutput()) {
+                    mAudioStreamer.start(mVirtualDevice.getDeviceId(), mPlaybackAudioSessionId);
+                }
+                if (mDeviceCapabilities.getSupportsAudioInput()) {
+                    mAudioInjector.start(mVirtualDevice.getDeviceId(), mRecordingAudioSessionId);
+                }
             }
         } else {
             mAudioStreamer.stop();
@@ -364,10 +369,17 @@ public final class VdmService extends Hilt_VdmService {
     private void createVirtualDevice(AssociationInfo associationInfo) {
         VirtualDeviceParams.Builder virtualDeviceBuilder =
                 new VirtualDeviceParams.Builder()
-                        .setName("VirtualDevice - " + mDeviceCapabilities.getDeviceName())
-                        .setDevicePolicy(POLICY_TYPE_AUDIO, DEVICE_POLICY_CUSTOM)
-                        .setAudioPlaybackSessionId(mAudioStreamer.getPlaybackSessionId())
-                        .setAudioRecordingSessionId(mAudioInjector.getRecordingSessionId());
+                        .setName("VirtualDevice - " + mDeviceCapabilities.getDeviceName());
+
+        AudioManager audioManager = getSystemService(AudioManager.class);
+        mPlaybackAudioSessionId = audioManager.generateAudioSessionId();
+        mRecordingAudioSessionId = audioManager.generateAudioSessionId();
+
+        if (mPreferenceController.getBoolean(R.string.pref_enable_client_audio)) {
+            virtualDeviceBuilder.setDevicePolicy(POLICY_TYPE_AUDIO, DEVICE_POLICY_CUSTOM)
+                    .setAudioPlaybackSessionId(mPlaybackAudioSessionId)
+                    .setAudioRecordingSessionId(mRecordingAudioSessionId);
+        }
 
         if (mPreferenceController.getBoolean(R.string.pref_always_unlocked_device)) {
             virtualDeviceBuilder.setLockState(LOCK_STATE_ALWAYS_UNLOCKED);
@@ -431,24 +443,12 @@ public final class VdmService extends Hilt_VdmService {
                 MoreExecutors.directExecutor(),
                 new ActivityListener() {
 
-                    private final HashSet<Integer> mSeenTrampolines = new HashSet<>();
-
                     @Override
                     public void onTopActivityChanged(
                             int displayId, @NonNull ComponentName componentName) {
                         Log.w(TAG, "onTopActivityChanged " + displayId + ": " + componentName);
                         int remoteDisplayId = mDisplayRepository.getRemoteDisplayId(displayId);
                         if (remoteDisplayId == Display.INVALID_DISPLAY) {
-                            return;
-                        }
-
-                        // The second time the trampoline activity is shown on the display, simply
-                        // remove the display.
-                        if (new ComponentName(VdmService.this, EmptyTrampolineActivity.class)
-                                .equals(componentName)) {
-                            if (!mSeenTrampolines.add(displayId)) {
-                                onDisplayEmpty(displayId);
-                            }
                             return;
                         }
 
@@ -472,12 +472,12 @@ public final class VdmService extends Hilt_VdmService {
                     public void onDisplayEmpty(int displayId) {
                         Log.i(TAG, "Display " + displayId + " is empty, removing");
                         mDisplayRepository.removeDisplay(displayId);
-                        mSeenTrampolines.remove(displayId);
                     }
                 });
         mVirtualDevice.addActivityListener(
                 MoreExecutors.directExecutor(),
-                new RunningVdmUidsTracker(getApplicationContext(), mAudioStreamer, mAudioInjector));
+                new RunningVdmUidsTracker(getApplicationContext(), mPreferenceController,
+                        mAudioStreamer, mAudioInjector));
 
         if (mPreferenceController.getBoolean(R.string.pref_enable_client_camera)) {
             if (mRemoteCameraManager != null) {
@@ -539,8 +539,7 @@ public final class VdmService extends Hilt_VdmService {
     }
 
     void startStreaming(Intent intent) {
-        mPendingRemoteIntent = new Intent(this, EmptyTrampolineActivity.class);
-        mPendingRemoteIntent.putExtra(Intent.EXTRA_INTENT, intent);
+        mPendingRemoteIntent = intent;
         mPendingRemoteIntent.addFlags(
                 Intent.FLAG_ACTIVITY_MULTIPLE_TASK | Intent.FLAG_ACTIVITY_NEW_TASK);
         mRemoteIo.sendMessage(
