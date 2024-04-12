@@ -15,6 +15,7 @@
  */
 
 import {Timestamp, TimestampType} from 'common/time';
+import {CoarseVersion} from './coarse_version';
 import {
   CustomQueryParamTypeMap,
   CustomQueryParserResultTypeMap,
@@ -24,6 +25,7 @@ import {AbsoluteEntryIndex, EntriesRange} from './index_types';
 import {TraceType} from './trace_type';
 
 export interface Parser<T> {
+  getCoarseVersion(): CoarseVersion;
   getTraceType(): TraceType;
   getLengthEntries(): number;
   getTimestamps(type: TimestampType): Timestamp[] | undefined;

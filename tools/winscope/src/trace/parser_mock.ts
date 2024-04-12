@@ -15,6 +15,7 @@
  */
 
 import {Timestamp, TimestampType} from 'common/time';
+import {CoarseVersion} from './coarse_version';
 import {CustomQueryParserResultTypeMap, CustomQueryType} from './custom_query';
 import {AbsoluteEntryIndex, EntriesRange} from './index_types';
 import {Parser} from './parser';
@@ -39,6 +40,10 @@ export class ParserMock<T> implements Parser<T> {
 
   getLengthEntries(): number {
     return this.entries.length;
+  }
+
+  getCoarseVersion(): CoarseVersion {
+    return CoarseVersion.MOCK;
   }
 
   getTimestamps(type: TimestampType): Timestamp[] | undefined {

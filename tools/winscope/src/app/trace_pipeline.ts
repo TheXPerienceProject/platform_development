@@ -19,6 +19,7 @@ import {
   NO_TIMEZONE_OFFSET_FACTORY,
   TimestampFactory,
 } from 'common/timestamp_factory';
+import {Analytics} from 'logging/analytics';
 import {ProgressListener} from 'messaging/progress_listener';
 import {
   CorruptedArchive,
@@ -27,9 +28,9 @@ import {
 } from 'messaging/winscope_error';
 import {WinscopeErrorListener} from 'messaging/winscope_error_listener';
 import {FileAndParsers} from 'parsers/file_and_parsers';
-import {ParserFactory} from 'parsers/parser_factory';
+import {ParserFactory as LegacyParserFactory} from 'parsers/legacy/parser_factory';
+import {TracesParserFactory} from 'parsers/legacy/traces_parser_factory';
 import {ParserFactory as PerfettoParserFactory} from 'parsers/perfetto/parser_factory';
-import {TracesParserFactory} from 'parsers/traces_parser_factory';
 import {FrameMapper} from 'trace/frame_mapper';
 import {Trace} from 'trace/trace';
 import {Traces} from 'trace/traces';
@@ -91,6 +92,7 @@ export class TracePipeline {
       this.loadedParsers.getParsers().forEach((parser) => {
         const trace = Trace.fromParser(parser, commonTimestampType);
         this.traces.setTrace(parser.getTraceType(), trace);
+        Analytics.Tracing.logTraceLoaded(parser);
       });
 
       const tracesParsers = await this.tracesParserFactory.createParsers(
@@ -190,7 +192,7 @@ export class TracePipeline {
       return;
     }
 
-    const legacyParsers = await new ParserFactory().createParsers(
+    const legacyParsers = await new LegacyParserFactory().createParsers(
       filterResult.legacy,
       this.timestampFactory,
       progressListener,

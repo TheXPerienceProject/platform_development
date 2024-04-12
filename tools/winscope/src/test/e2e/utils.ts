@@ -34,7 +34,7 @@ class E2eTestUtils {
     viewerSelector: string,
   ) {
     await E2eTestUtils.uploadFixture(fixturePath);
-    await E2eTestUtils.closeSnackBarIfNeeded();
+    await E2eTestUtils.closeSnackBar();
     await E2eTestUtils.clickViewTracesButton();
     await E2eTestUtils.clickViewerTabButton(viewerTabTitle);
 
@@ -48,7 +48,7 @@ class E2eTestUtils {
     expect(await E2eTestUtils.areMessagesEmitted(defaulttimeMs)).toBeTruthy();
     await E2eTestUtils.checkEmitsUnsupportedFileFormatMessages();
     await E2eTestUtils.checkEmitsOldDataMessages();
-    await E2eTestUtils.closeSnackBarIfNeeded();
+    await E2eTestUtils.closeSnackBar();
   }
 
   static async areMessagesEmitted(defaultTimeoutMs: number): Promise<boolean> {
@@ -85,7 +85,7 @@ class E2eTestUtils {
     await button.click();
   }
 
-  static async closeSnackBarIfNeeded() {
+  static async closeSnackBar() {
     const closeButton = element(by.css('.snack-bar-action'));
     const isPresent = await closeButton.isPresent();
     if (isPresent) {
@@ -249,6 +249,56 @@ class E2eTestUtils {
     }
 
     expect(foundLabel).toBeTruthy();
+  }
+
+  static async checkTotalScrollEntries(
+    selectors: {viewer: string; scroll: string; entry: string},
+    scrollViewport: Function,
+    numberOfEntries: number,
+    scrollToBottomOffset?: number | undefined,
+  ) {
+    if (scrollToBottomOffset !== undefined) {
+      const viewport = element(
+        by.css(`${selectors.viewer} ${selectors.scroll}`),
+      );
+      await browser.executeAsyncScript(
+        scrollViewport,
+        viewport,
+        scrollToBottomOffset,
+      );
+    }
+    const entries: ElementFinder[] = await element.all(
+      by.css(`${selectors.viewer} ${selectors.scroll} ${selectors.entry}`),
+    );
+    expect(await entries[entries.length - 1].getAttribute('item-id')).toEqual(
+      `${numberOfEntries - 1}`,
+    );
+  }
+
+  static async toggleSelectFilterOptions(
+    viewerSelector: string,
+    filterSelector: string,
+    options: string[],
+  ) {
+    const selectFilter = element(
+      by.css(
+        `${viewerSelector} .filters ${filterSelector} .mat-select-trigger`,
+      ),
+    );
+    await selectFilter.click();
+
+    const optionElements: ElementFinder[] = await element.all(
+      by.css('.mat-select-panel .mat-option'),
+    );
+    for (const optionEl of optionElements) {
+      const optionText = (await optionEl.getText()).trim();
+      if (options.some((option) => optionText === option)) {
+        await optionEl.click();
+      }
+    }
+
+    const backdrop = element(by.css('.cdk-overlay-backdrop'));
+    await browser.actions().mouseMove(backdrop, {x: 0, y: 0}).click().perform();
   }
 
   static async uploadFixture(...paths: string[]) {
