@@ -8,6 +8,7 @@ import android.database.MatrixCursor
 import android.net.Uri
 import android.os.Bundle
 import android.os.CancellationSignal
+import android.os.SystemClock
 import android.service.chooser.AdditionalContentContract
 import kotlin.random.Random
 
@@ -81,6 +82,38 @@ class AdditionalContentProvider : ContentProvider() {
                     )?.extraStream?.size ?: -1
                 )
             }
+
+            if (chooserIntent.hasExtra(Intent.EXTRA_CHOOSER_TARGETS)) {
+                result.putParcelableArray(
+                    Intent.EXTRA_CHOOSER_TARGETS,
+                    arrayOf(
+                        createCallerTarget(
+                            context,
+                            buildString {
+                                append("Modified Caller Target. Shared URIs:")
+                                chooserIntent.getParcelableExtra(
+                                    Intent.EXTRA_INTENT,
+                                    Intent::class.java
+                                )?.extraStream?.forEach {
+                                    append("\n * $it")
+                                }
+                            }
+                        )
+                    )
+                )
+            }
+
+            if (chooserIntent.hasExtra(Intent.EXTRA_CHOOSER_REFINEMENT_INTENT_SENDER)) {
+                result.putParcelable(
+                    Intent.EXTRA_CHOOSER_REFINEMENT_INTENT_SENDER,
+                    createRefinementIntentSender(context, false)
+                )
+            }
+
+            val latency = chooserIntent.getIntExtra(EXTRA_SELECTION_LATENCY, 0)
+            if (latency > 0) {
+                SystemClock.sleep(latency.toLong())
+            }
         }
         return result
     }
@@ -119,6 +152,7 @@ class AdditionalContentProvider : ContentProvider() {
     companion object {
         val ADDITIONAL_CONTENT_URI = Uri.parse("content://com.android.sharetest.additionalcontent")
         val CURSOR_START_POSITION = "com.android.sharetest.CURSOR_START_POS"
+        val EXTRA_SELECTION_LATENCY = "latency"
     }
 }
 

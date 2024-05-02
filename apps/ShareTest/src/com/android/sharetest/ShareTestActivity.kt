@@ -66,6 +66,8 @@ class ShareTestActivity : Activity() {
     private lateinit var metadata: EditText
     private lateinit var shareouselCheck: CheckBox
     private lateinit var altIntentCheck: CheckBox
+    private lateinit var callerTargetCheck: CheckBox
+    private lateinit var selectionLatencyGroup: RadioGroup
     private val customActionFactory = CustomActionFactory(this)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -109,8 +111,10 @@ class ShareTestActivity : Activity() {
         albumCheck = requireViewById(R.id.album_text)
         shareouselCheck = requireViewById(R.id.shareousel)
         altIntentCheck = requireViewById(R.id.alt_intent)
+        callerTargetCheck = requireViewById(R.id.caller_direct_target)
         mediaTypeSelection = requireViewById(R.id.media_type_selection)
         mediaTypeHeader = requireViewById(R.id.media_type_header)
+        selectionLatencyGroup = requireViewById(R.id.selection_latency)
         mediaSelection = requireViewById<RadioGroup>(R.id.media_selection).apply {
             setOnCheckedChangeListener { _, id -> updateMediaTypesList(id) }
             check(R.id.no_media)
@@ -298,6 +302,12 @@ class ShareTestActivity : Activity() {
                 arrayOf(createAlternateIntent(share))
             )
         }
+        if (callerTargetCheck.isChecked) {
+            chooserIntent.putExtra(
+                Intent.EXTRA_CHOOSER_TARGETS,
+                arrayOf(createCallerTarget(this, "Initial Direct Target"))
+            )
+        }
 
         if (albumCheck.isChecked) {
             chooserIntent.putExtra(
@@ -311,14 +321,9 @@ class ShareTestActivity : Activity() {
         }
 
         if (requireViewById<CheckBox>(R.id.use_refinement).isChecked) {
-            val refinementIntentSender = PendingIntent.getBroadcast(
-                this,
-                1,
-                Intent(REFINEMENT_ACTION).setPackage(getPackageName()),
-                PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_CANCEL_CURRENT
-            ).intentSender
             chooserIntent.putExtra(
-                Intent.EXTRA_CHOOSER_REFINEMENT_INTENT_SENDER, refinementIntentSender
+                Intent.EXTRA_CHOOSER_REFINEMENT_INTENT_SENDER,
+                createRefinementIntentSender(this, true)
             )
         }
 
@@ -349,6 +354,15 @@ class ShareTestActivity : Activity() {
                     AdditionalContentProvider.CURSOR_START_POSITION,
                     imageIndex,
                 )
+            }
+            val latency = when (selectionLatencyGroup.checkedRadioButtonId) {
+                R.id.selection_latency_50 -> 50
+                R.id.selection_latency_200 -> 200
+                R.id.selection_latency_800 -> 800
+                else -> 0
+            }
+            if (latency > 0) {
+                chooserIntent.putExtra(AdditionalContentProvider.EXTRA_SELECTION_LATENCY, latency)
             }
         }
 
@@ -422,10 +436,6 @@ class ShareTestActivity : Activity() {
         super.onDestroy()
         unregisterReceiver(customActionReceiver)
         unregisterReceiver(refinementReceiver)
-    }
-
-    companion object {
-        const val REFINEMENT_ACTION = "com.android.sharetest.REFINEMENT"
     }
 }
 

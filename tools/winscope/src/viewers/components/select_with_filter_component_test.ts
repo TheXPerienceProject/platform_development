@@ -59,12 +59,75 @@ describe('SelectWithFilterComponent', () => {
   });
 
   it('applies filter correctly', () => {
+    const trigger = assertDefined(
+      htmlElement.querySelector('.mat-select-trigger'),
+    ) as HTMLElement;
+    trigger.click();
+
     const selectComponent = assertDefined(component.selectWithFilterComponent);
     expect(selectComponent.filteredOptions).toEqual(['1', '2', '3']);
-    selectComponent.filterString = '2';
-    selectComponent.onOptionsFilterChange();
+
+    const inputEl = assertDefined(
+      document.querySelector('.mat-select-panel .select-filter input'),
+    );
+
+    (inputEl as HTMLInputElement).value = '2';
+    (inputEl as HTMLInputElement).dispatchEvent(new Event('input'));
     fixture.detectChanges();
     expect(selectComponent.filteredOptions).toEqual(['2']);
+
+    (inputEl as HTMLInputElement).value = '';
+    (inputEl as HTMLInputElement).dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    expect(selectComponent.filteredOptions).toEqual(['1', '2', '3']);
+  });
+
+  it('applies selection correctly', () => {
+    const spy = spyOn(
+      assertDefined(component.selectWithFilterComponent).selectChange,
+      'emit',
+    );
+    const trigger = assertDefined(
+      htmlElement.querySelector('.mat-select-trigger'),
+    ) as HTMLElement;
+    trigger.click();
+
+    const option1 = assertDefined(
+      document.querySelector('.mat-select-panel .mat-option'),
+    ) as HTMLElement;
+
+    option1.click();
+    expect(spy).toHaveBeenCalled();
+    expect(assertDefined(spy.calls.mostRecent().args[0]).value).toEqual(['1']);
+
+    option1.click();
+    expect(spy).toHaveBeenCalled();
+    expect(assertDefined(spy.calls.mostRecent().args[0]).value).toEqual([]);
+  });
+
+  it('resets filter on close', async () => {
+    const trigger = assertDefined(
+      htmlElement.querySelector('.mat-select-trigger'),
+    ) as HTMLElement;
+    trigger.click();
+
+    const selectComponent = assertDefined(component.selectWithFilterComponent);
+    expect(selectComponent.filteredOptions).toEqual(['1', '2', '3']);
+
+    const inputEl = assertDefined(
+      document.querySelector('.mat-select-panel .select-filter input'),
+    );
+
+    (inputEl as HTMLInputElement).value = 'A';
+    (inputEl as HTMLInputElement).dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    expect(selectComponent.filteredOptions).toEqual([]);
+
+    (document.querySelector('.cdk-overlay-backdrop') as HTMLElement).click();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(selectComponent.filterString).toEqual('');
+    expect(selectComponent.filteredOptions).toEqual(['1', '2', '3']);
   });
 
   @Component({
