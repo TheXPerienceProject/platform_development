@@ -29,13 +29,13 @@ import {Title} from '@angular/platform-browser';
 import {AbtChromeExtensionProtocol} from 'abt_chrome_extension/abt_chrome_extension_protocol';
 import {Mediator} from 'app/mediator';
 import {TimelineData} from 'app/timeline_data';
-import {TRACE_INFO} from 'app/trace_info';
 import {TracePipeline} from 'app/trace_pipeline';
 import {FileUtils} from 'common/file_utils';
 import {globalConfig} from 'common/global_config';
 import {PersistentStore} from 'common/persistent_store';
 import {PersistentStoreProxy} from 'common/persistent_store_proxy';
 import {Timestamp} from 'common/time';
+import {UrlUtils} from 'common/url_utils';
 import {CrossToolProtocol} from 'cross_tool/cross_tool_protocol';
 import {Analytics} from 'logging/analytics';
 import {
@@ -76,8 +76,8 @@ import {UploadTracesComponent} from './upload_traces_component';
   selector: 'app-root',
   template: `
     <mat-toolbar class="toolbar">
-      <div class="horizontal-align vertical-align fixed">
-        <span class="app-title">Winscope</span>
+      <div class="horizontal-align vertical-align">
+        <img class="app-title fixed" [src]="getLogoUrl()"/>
       </div>
 
       <div class="horizontal-align vertical-align">
@@ -227,6 +227,9 @@ import {UploadTracesComponent} from './upload_traces_component';
         justify-content: space-between;
         min-height: 64px;
       }
+      .app-title {
+        height: 100%;
+      }
       .welcome-info {
         margin: 16px 0 6px 0;
         text-align: center;
@@ -315,7 +318,6 @@ export class AppComponent implements WinscopeEventListener {
   dataLoaded = false;
   showDataLoadedElements = false;
   collapsedTimelineHeight = 0;
-  TRACE_INFO = TRACE_INFO;
   isEditingFilename = false;
   store = new PersistentStore();
   viewers: Viewer[] = [];
@@ -479,6 +481,13 @@ export class AppComponent implements WinscopeEventListener {
 
   getLoadedTraceTypes(): TraceType[] {
     return this.tracePipeline.getTraces().mapTrace((trace) => trace.type);
+  }
+
+  getLogoUrl(): string {
+    const logoPath = this.isDarkModeOn
+      ? 'logo_dark_mode.svg'
+      : 'logo_light_mode.svg';
+    return UrlUtils.getRootUrl() + logoPath;
   }
 
   setDarkMode(enabled: boolean) {
