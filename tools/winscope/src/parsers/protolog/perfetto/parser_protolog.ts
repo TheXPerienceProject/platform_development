@@ -36,6 +36,10 @@ class PerfettoLogMessageTableRow {
 }
 
 export class ParserProtolog extends AbstractParser<PropertyTreeNode> {
+  protected override queryTimestampsSql = `SELECT ts FROM ${this.getTableName()} ORDER BY ts ASC;`;
+
+  private indexToIdCache: number[] | undefined = undefined;
+
   override getTraceType(): TraceType {
     return TraceType.PROTO_LOG;
   }
@@ -61,15 +65,13 @@ export class ParserProtolog extends AbstractParser<PropertyTreeNode> {
     return 'protolog';
   }
 
-  protected override async queryEntry(
-    index: number,
-  ): Promise<PerfettoLogMessageTableRow> {
+  private async queryEntry(index: number): Promise<PerfettoLogMessageTableRow> {
     const sql = `
       SELECT
         ts, tag, level, message
       FROM
         protolog
-      WHERE protolog.id = ${index};
+      WHERE protolog.id = ${await this.getLogIdAt(index)};
     `;
     const result = await this.traceProcessor.query(sql).waitAllRows();
 
@@ -87,5 +89,25 @@ export class ParserProtolog extends AbstractParser<PropertyTreeNode> {
       entry.get('level') as string,
       entry.get('message') as string,
     );
+  }
+
+  private async getLogIdAt(index: number): Promise<number> {
+    if (this.indexToIdCache === undefined) {
+      this.indexToIdCache = await this.buildIndexToIdArray();
+    }
+
+    return this.indexToIdCache[index];
+  }
+
+  private async buildIndexToIdArray(): Promise<number[]> {
+    const sql = `SELECT id FROM protolog ORDER BY ts ASC;`;
+    const result = await this.traceProcessor.query(sql).waitAllRows();
+
+    const indexToId: number[] = [];
+    for (const it = result.iter({}); it.valid(); it.next()) {
+      indexToId.push(it.get('id') as number);
+    }
+
+    return indexToId;
   }
 }
