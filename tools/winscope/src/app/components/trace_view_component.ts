@@ -15,10 +15,10 @@
  */
 
 import {Component, ElementRef, Inject, Input} from '@angular/core';
-import {TRACE_INFO} from 'app/trace_info';
 import {assertDefined} from 'common/assert_utils';
 import {FunctionUtils} from 'common/function_utils';
 import {PersistentStore} from 'common/persistent_store';
+import {Analytics} from 'logging/analytics';
 import {
   TabbedViewSwitched,
   WinscopeEvent,
@@ -29,6 +29,7 @@ import {
   WinscopeEventEmitter,
 } from 'messaging/winscope_event_emitter';
 import {WinscopeEventListener} from 'messaging/winscope_event_listener';
+import {TRACE_INFO} from 'trace/trace_info';
 import {View, Viewer, ViewType} from 'viewers/viewer';
 
 interface Tab {
@@ -221,6 +222,7 @@ export class TraceViewComponent
 
     this.currentActiveTab = tab;
 
+    Analytics.Navigation.logTabSwitched(TRACE_INFO[tab.view.traceType].name);
     await this.emitAppEvent(new TabbedViewSwitched(tab.view));
   }
 }
