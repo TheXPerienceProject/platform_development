@@ -32,6 +32,7 @@ import {TimelineData} from 'app/timeline_data';
 import {TracePipeline} from 'app/trace_pipeline';
 import {FileUtils} from 'common/file_utils';
 import {globalConfig} from 'common/global_config';
+import {InMemoryStorage} from 'common/in_memory_storage';
 import {PersistentStore} from 'common/persistent_store';
 import {PersistentStoreProxy} from 'common/persistent_store_proxy';
 import {Timestamp} from 'common/time';
@@ -45,11 +46,11 @@ import {
   AppRefreshDumpsRequest,
   AppResetRequest,
   AppTraceViewRequest,
+  DarkModeToggled,
   WinscopeEvent,
   WinscopeEventType,
 } from 'messaging/winscope_event';
 import {WinscopeEventListener} from 'messaging/winscope_event_listener';
-import {MockStorage} from 'test/unit/mock_storage';
 import {TraceType} from 'trace/trace_type';
 import {proxyClient, ProxyState} from 'trace_collection/proxy_client';
 import {
@@ -423,7 +424,7 @@ export class AppComponent implements WinscopeEventListener {
     }
 
     this.traceConfigStorage =
-      globalConfig.MODE === 'PROD' ? localStorage : new MockStorage();
+      globalConfig.MODE === 'PROD' ? localStorage : new InMemoryStorage();
 
     this.traceConfig = PersistentStoreProxy.new<TraceConfigurationMap>(
       'TracingSettings',
@@ -435,19 +436,16 @@ export class AppComponent implements WinscopeEventListener {
       {
         window_dump: {
           name: 'Window Manager',
-          isTraceCollection: undefined,
           run: true,
           config: undefined,
         },
         layers_dump: {
           name: 'Surface Flinger',
-          isTraceCollection: undefined,
           run: true,
           config: undefined,
         },
         screenshot: {
           name: 'Screenshot',
-          isTraceCollection: undefined,
           run: true,
           config: undefined,
         },
@@ -487,10 +485,11 @@ export class AppComponent implements WinscopeEventListener {
     return UrlUtils.getRootUrl() + logoPath;
   }
 
-  setDarkMode(enabled: boolean) {
+  async setDarkMode(enabled: boolean) {
     document.body.classList.toggle('dark-mode', enabled);
     this.store.add('dark-mode', `${enabled}`);
     this.isDarkModeOn = enabled;
+    await this.mediator.onWinscopeEvent(new DarkModeToggled(enabled));
   }
 
   onPencilIconClick() {
