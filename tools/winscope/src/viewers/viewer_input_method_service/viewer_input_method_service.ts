@@ -15,6 +15,7 @@
  */
 
 import {Traces} from 'trace/traces';
+import {TRACE_INFO} from 'trace/trace_info';
 import {ImeTraceType, TraceType} from 'trace/trace_type';
 import {ViewerInputMethod} from 'viewers/common/viewer_input_method';
 import {View, ViewType} from 'viewers/viewer';
@@ -33,7 +34,7 @@ class ViewerInputMethodService extends ViewerInputMethod {
       ViewType.TAB,
       this.getDependencies(),
       this.htmlElement,
-      'Input Method Service',
+      TRACE_INFO[TraceType.INPUT_METHOD_SERVICE].name,
       TraceType.INPUT_METHOD_SERVICE,
     );
   }

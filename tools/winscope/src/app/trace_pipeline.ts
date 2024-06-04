@@ -172,7 +172,7 @@ export class TracePipeline {
   clear() {
     this.loadedParsers.clear();
     this.traces = new Traces();
-    this.timestampConverter = new TimestampConverter(UTC_TIMEZONE_INFO);
+    this.timestampConverter.clear();
     this.downloadArchiveFilename = undefined;
   }
 
@@ -299,7 +299,7 @@ export class TracePipeline {
         progressListener?.onProgressUpdate(progressMessage, totalPercentage);
       };
 
-      if (FileUtils.isZipFile(file)) {
+      if (await FileUtils.isZipFile(file)) {
         try {
           const subFiles = await FileUtils.unzipFile(file, onSubProgressUpdate);
           const subTraceFiles = subFiles.map((subFile) => {
@@ -310,6 +310,10 @@ export class TracePipeline {
         } catch (e) {
           notificationListener.onNotifications([new CorruptedArchive(file)]);
         }
+      } else if (await FileUtils.isGZipFile(file)) {
+        const unzippedFile = await FileUtils.decompressGZipFile(file);
+        unzippedArchives.push([new TraceFile(unzippedFile, file)]);
+        onSubProgressUpdate(100);
       } else {
         unzippedArchives.push([new TraceFile(file, undefined)]);
         onSubProgressUpdate(100);

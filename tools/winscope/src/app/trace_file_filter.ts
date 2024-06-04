@@ -99,15 +99,7 @@ export class TraceFileFilter {
       timezoneStartIndex,
     );
 
-    let utcOffsetMs = undefined;
-    const timeOffsetIndex = fileData.indexOf('[persist.sys.time.offset]');
-    if (timeOffsetIndex !== -1) {
-      utcOffsetMs = Number(
-        this.extractValueFromRawBugReport(fileData, timeOffsetIndex),
-      );
-    }
-
-    return {timezone, locale: 'en-US', utcOffsetMs};
+    return {timezone, locale: 'en-US'};
   }
 
   private extractValueFromRawBugReport(
@@ -166,7 +158,7 @@ export class TraceFileFilter {
     const unzippedLegacyFiles: TraceFile[] = [];
 
     for (const file of legacyFiles) {
-      if (FileUtils.isZipFile(file.file)) {
+      if (await FileUtils.isZipFile(file.file)) {
         try {
           const subFiles = await FileUtils.unzipFile(file.file);
           const subTraceFiles = subFiles.map((subFile) => {

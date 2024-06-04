@@ -117,35 +117,20 @@ import {Distance2D} from './types3d';
         *ngIf="internalDisplays.length > 0"
         (selectedTabChange)="blurTab()"
         dynamicHeight>
-        <mat-tab label="Displays">
+        <mat-tab [label]="groupLabel">
           <div class="display-button-container display-name-buttons">
             <button
               #tooltip="matTooltip"
               *ngFor="let display of internalDisplays"
               [color]="getDisplayButtonColor(display.groupId)"
-              [matTooltip]="display.name"
+              [matTooltip]="getDisplayButtonTooltip(display, displayButtonText)"
               [matTooltipDisabled]="shouldDisableTooltip(displayButtonText)"
+              matTooltipClass="multline-tooltip"
               (mouseenter)="shouldDisableTooltip(displayButtonText) ? tooltip.disabled = true : tooltip.disabled = false"
               (mouseleave)="tooltip.disabled = true"
               mat-raised-button
               (click)="onDisplayIdChange(display)">
               <span #displayButtonText> {{ display.name }} </span>
-            </button>
-          </div>
-        </mat-tab>
-        <mat-tab *ngIf="isStackBased" label="Stacks">
-          <div class="display-button-container stack-buttons">
-            <button
-              *ngFor="let groupId of internalGroupIds"
-              #tooltip="matTooltip"
-              [color]="getStackButtonColor(groupId)"
-              (mouseenter)="tooltip.disabled = false"
-              (mouseleave)="tooltip.disabled = true"
-              [matTooltip]="getStackButtonTooltip(groupId)"
-              matTooltipClass="multline-tooltip"
-              mat-raised-button
-              (click)="onGroupIdChange(groupId)">
-              {{ getStackButtonLabel(groupId) }}
             </button>
           </div>
         </mat-tab>
@@ -253,19 +238,18 @@ export class RectsComponent implements OnInit, OnDestroy {
   @Input() title = 'title';
   @Input() zoomFactor = 1;
   @Input() store?: PersistentStore;
-  @Input() isStackBased = false;
   @Input() rects: UiRect[] = [];
   @Input() miniRects: UiRect[] | undefined;
   @Input() displays: DisplayIdentifier[] = [];
   @Input() highlightedItem = '';
+  @Input() groupLabel = 'Displays';
+  @Input() isStackBased = false;
 
-  private stackSelected = false;
   private internalRects: UiRect[] = [];
   private internalMiniRects?: UiRect[];
   private storeKeyShowOnlyVisibleState = '';
   private storeKeyZSpacingFactor = '';
   private internalDisplays: DisplayIdentifier[] = [];
-  private internalGroupIds = new Set<number>();
   private internalHighlightedItem = '';
   private currentDisplay: DisplayIdentifier | undefined;
   private mapper3d: Mapper3D;
@@ -277,6 +261,8 @@ export class RectsComponent implements OnInit, OnDestroy {
   private largeRectsLabelsElement?: HTMLElement;
   private mouseMoveListener = (event: MouseEvent) => this.onMouseMove(event);
   private mouseUpListener = (event: MouseEvent) => this.onMouseUp(event);
+
+  private static readonly ZOOM_SCROLL_RATIO = 0.3;
 
   constructor(@Inject(ElementRef) private elementRef: ElementRef) {
     this.mapper3d = new Mapper3D();
@@ -290,14 +276,18 @@ export class RectsComponent implements OnInit, OnDestroy {
       this.elementRef.nativeElement.querySelector('.canvas-container');
     this.resizeObserver.observe(canvasContainer);
 
+    const isDarkMode = () => this.store?.get('dark-mode') === 'true';
+
     this.largeRectsCanvasElement = canvasContainer.querySelector(
       '.large-rects-canvas',
     )! as HTMLCanvasElement;
-    this.largeRectsLabelsElement =
-      canvasContainer.querySelector('.large-rects-labels') ?? undefined;
+    this.largeRectsLabelsElement = assertDefined(
+      canvasContainer.querySelector('.large-rects-labels'),
+    ) as HTMLElement;
     this.largeRectsCanvas = new Canvas(
       this.largeRectsCanvasElement,
-      this.largeRectsLabelsElement!,
+      this.largeRectsLabelsElement,
+      isDarkMode,
     );
     this.largeRectsCanvasElement.addEventListener('mousedown', (event) =>
       this.onCanvasMouseDown(event),
@@ -311,14 +301,17 @@ export class RectsComponent implements OnInit, OnDestroy {
       this.internalDisplays.length > 0
         ? this.getFirstDisplayWithRectsOrFirstDisplay(this.internalDisplays)
         : undefined;
-    this.mapper3d.setCurrentGroupId(this.currentDisplay?.groupId ?? 0);
     this.mapper3d.increaseZoomFactor(this.zoomFactor - 1);
     this.drawLargeRectsAndLabels();
 
     this.miniRectsCanvasElement = canvasContainer.querySelector(
       '.mini-rects-canvas',
     )! as HTMLCanvasElement;
-    this.miniRectsCanvas = new Canvas(this.miniRectsCanvasElement);
+    this.miniRectsCanvas = new Canvas(
+      this.miniRectsCanvasElement,
+      undefined,
+      isDarkMode,
+    );
     if (this.miniRects) {
       this.drawMiniRects();
     }
@@ -337,19 +330,23 @@ export class RectsComponent implements OnInit, OnDestroy {
         this.drawLargeRectsAndLabels();
       }
     }
+    let displayChange = false;
+    if (simpleChanges['displays']) {
+      const curr: DisplayIdentifier[] = simpleChanges['displays'].currentValue;
+      const prev: DisplayIdentifier[] | null =
+        simpleChanges['displays'].previousValue;
+      displayChange =
+        curr.length > 0 &&
+        !curr.every((d, index) => d.displayId === prev?.at(index)?.displayId);
+    }
     if (simpleChanges['rects']) {
       this.internalRects = simpleChanges['rects'].currentValue;
-      if (!simpleChanges['displays']) {
+      if (!displayChange) {
         this.drawLargeRectsAndLabels();
       }
     }
-    if (simpleChanges['displays']) {
+    if (displayChange) {
       this.onDisplaysChange(simpleChanges['displays']);
-      if (this.isStackBased) {
-        this.internalGroupIds = new Set(
-          this.internalDisplays.map((display) => display.groupId),
-        );
-      }
     }
     if (simpleChanges['miniRects']) {
       this.internalMiniRects = simpleChanges['miniRects'].currentValue;
@@ -376,14 +373,12 @@ export class RectsComponent implements OnInit, OnDestroy {
       return;
     }
 
-    if (!this.stackSelected) {
-      const curr = this.internalDisplays.find(
-        (display) => display.displayId === this.currentDisplay?.displayId,
-      );
-      if (curr) {
-        this.updateCurrentDisplay(curr);
-        return;
-      }
+    const curr = this.internalDisplays.find(
+      (display) => display.displayId === this.currentDisplay?.displayId,
+    );
+    if (curr) {
+      this.updateCurrentDisplay(curr);
+      return;
     }
 
     const displaysWithCurrentGroupId = this.internalDisplays.filter(
@@ -396,22 +391,10 @@ export class RectsComponent implements OnInit, OnDestroy {
       return;
     }
 
-    const displayWithCurrentDisplayId = this.internalDisplays.find(
-      (display) => display.displayId === this.currentDisplay?.displayId,
+    this.updateCurrentDisplay(
+      this.getFirstDisplayWithRectsOrFirstDisplay(displaysWithCurrentGroupId),
     );
-    if (!displayWithCurrentDisplayId) {
-      this.updateCurrentDisplay(
-        this.getFirstDisplayWithRectsOrFirstDisplay(displaysWithCurrentGroupId),
-      );
-      return;
-    }
-
-    if (
-      displayWithCurrentDisplayId.groupId !== this.mapper3d.getCurrentGroupId()
-    ) {
-      this.updateCurrentDisplay(displayWithCurrentDisplayId);
-      return;
-    }
+    return;
   }
 
   updateControlsFromStore() {
@@ -434,6 +417,7 @@ export class RectsComponent implements OnInit, OnDestroy {
   }
 
   onSeparationSliderChange(factor: number) {
+    Analytics.Navigation.logRectSettingsChanged('z spacing', factor);
     this.store?.add(this.storeKeyZSpacingFactor, `${factor}`);
     this.mapper3d.setZSpacingFactor(factor);
     this.drawLargeRectsAndLabels();
@@ -445,7 +429,7 @@ export class RectsComponent implements OnInit, OnDestroy {
   }
 
   resetCamera() {
-    Analytics.Navigation.logZoom('reset');
+    Analytics.Navigation.logZoom('reset', 'rects');
     this.mapper3d.resetCamera();
     this.drawLargeRectsAndLabels();
   }
@@ -454,11 +438,11 @@ export class RectsComponent implements OnInit, OnDestroy {
   onScroll(event: WheelEvent) {
     if ((event.target as HTMLElement).className === 'large-rects-canvas') {
       if (event.deltaY > 0) {
-        Analytics.Navigation.logZoom('scroll', 'out');
-        this.doZoomOut();
+        Analytics.Navigation.logZoom('scroll', 'rects', 'out');
+        this.doZoomOut(RectsComponent.ZOOM_SCROLL_RATIO);
       } else {
-        Analytics.Navigation.logZoom('scroll', 'in');
-        this.doZoomIn();
+        Analytics.Navigation.logZoom('scroll', 'rects', 'in');
+        this.doZoomIn(RectsComponent.ZOOM_SCROLL_RATIO);
       }
     }
   }
@@ -480,77 +464,53 @@ export class RectsComponent implements OnInit, OnDestroy {
   }
 
   onZoomInClick() {
-    Analytics.Navigation.logZoom('button', 'in');
+    Analytics.Navigation.logZoom('button', 'rects', 'in');
     this.doZoomIn();
   }
 
   onZoomOutClick() {
-    Analytics.Navigation.logZoom('button', 'out');
+    Analytics.Navigation.logZoom('button', 'rects', 'out');
     this.doZoomOut();
   }
 
   onShowOnlyVisibleModeChange(enabled: boolean) {
+    Analytics.Navigation.logRectSettingsChanged('only visible', enabled);
     this.store?.add(this.storeKeyShowOnlyVisibleState, `${enabled}`);
     this.mapper3d.setShowOnlyVisibleMode(enabled);
     this.drawLargeRectsAndLabels();
   }
 
   onDisplayIdChange(display: DisplayIdentifier) {
-    this.stackSelected = false;
     this.updateCurrentDisplay(display);
+    const event = new CustomEvent(ViewerEvents.RectGroupIdChange, {
+      bubbles: true,
+      detail: {groupId: display.groupId},
+    });
+    this.elementRef.nativeElement.dispatchEvent(event);
   }
 
-  shouldDisableTooltip(buttonText: HTMLElement) {
-    return buttonText.offsetWidth < 200;
+  getDisplayButtonColor(groupId: number) {
+    if (!this.currentDisplay) return 'primary';
+    return this.currentDisplay.groupId === groupId ? 'primary' : 'secondary';
   }
 
-  onGroupIdChange(groupId: number) {
-    this.stackSelected = true;
-    const displaysWithGroupId = this.getDisplaysWithGroupId(groupId);
-    if (
-      this.currentDisplay &&
-      displaysWithGroupId.length > 0 &&
-      !displaysWithGroupId.includes(this.currentDisplay)
-    ) {
-      this.updateCurrentDisplay(
-        this.getFirstDisplayWithRectsOrFirstDisplay(displaysWithGroupId),
+  shouldDisableTooltip(buttonText: HTMLElement): boolean {
+    return !this.isStackBased && buttonText.offsetWidth < 200;
+  }
+
+  getDisplayButtonTooltip(
+    display: DisplayIdentifier,
+    buttonText: HTMLElement,
+  ): string {
+    const hasLongDisplayName = buttonText.offsetWidth >= 200;
+    const displayName = hasLongDisplayName ? display.name + '\n' : '';
+    if (display.groupId === DisplayLayerStack.INVALID_LAYER_STACK) {
+      return (
+        displayName +
+        (this.isStackBased ? 'Invalid layer stack - display off' : '')
       );
     }
-  }
-
-  getDisplayButtonColor(groupId: number): string {
-    if (this.stackSelected) return 'secondary';
-    return this.getButtonColor(groupId);
-  }
-
-  getStackButtonColor(groupId: number): string {
-    if (!this.stackSelected) return 'secondary';
-    return this.getButtonColor(groupId);
-  }
-
-  getStackButtonTooltip(groupId: number): string {
-    const displayNames = this.getDisplaysWithGroupId(groupId)
-      .map((display) => display.name)
-      .join(', ');
-    if (groupId === DisplayLayerStack.INVALID_LAYER_STACK) {
-      return `
-        Invalid layer stack - associated displays off.
-        Displays: ${displayNames}
-      `;
-    }
-    return `
-    Associated displays on.
-    Displays: ${displayNames}
-  `;
-  }
-
-  getStackButtonLabel(groupId: number): string {
-    return (
-      `Stack ${groupId}: ` +
-      this.getDisplaysWithGroupId(groupId)
-        .map((display) => display.name)
-        .join(', ')
-    );
+    return displayName + (this.isStackBased ? 'display on' : '');
   }
 
   onRectClick(event: MouseEvent) {
@@ -594,11 +554,6 @@ export class RectsComponent implements OnInit, OnDestroy {
     return this.mapper3d.getZSpacingFactor();
   }
 
-  private getButtonColor(groupId: number) {
-    if (!this.currentDisplay) return 'primary';
-    return this.currentDisplay.groupId === groupId ? 'primary' : 'secondary';
-  }
-
   private getFirstDisplayWithRectsOrFirstDisplay(
     displays: DisplayIdentifier[],
   ): DisplayIdentifier {
@@ -617,12 +572,6 @@ export class RectsComponent implements OnInit, OnDestroy {
     this.drawLargeRectsAndLabels();
   }
 
-  private getDisplaysWithGroupId(groupId: number): DisplayIdentifier[] {
-    return assertDefined(
-      this.internalDisplays.filter((display) => display.groupId === groupId),
-    );
-  }
-
   private findClickedRectId(event: MouseEvent): string | undefined {
     const canvas = event.target as Element;
     const canvasOffset = canvas.getBoundingClientRect();
@@ -636,13 +585,13 @@ export class RectsComponent implements OnInit, OnDestroy {
     return this.largeRectsCanvas?.getClickedRectId(x, y, z);
   }
 
-  private doZoomIn() {
-    this.mapper3d.increaseZoomFactor();
+  private doZoomIn(ratio = 1) {
+    this.mapper3d.increaseZoomFactor(ratio);
     this.drawLargeRectsAndLabels();
   }
 
-  private doZoomOut() {
-    this.mapper3d.decreaseZoomFactor();
+  private doZoomOut(ratio = 1) {
+    this.mapper3d.decreaseZoomFactor(ratio);
     this.drawLargeRectsAndLabels();
   }
 
@@ -661,6 +610,8 @@ export class RectsComponent implements OnInit, OnDestroy {
     // We'd probably need to get rid of the intermediate layer (Scene3D, Rect3D, ... types) and
     // work directly with three.js's meshes.
     if (this.internalMiniRects) {
+      const largeRectGroupId = this.mapper3d.getCurrentGroupId();
+      this.mapper3d.setCurrentGroupId(this.internalMiniRects[0]?.groupId);
       this.mapper3d.setRects(this.internalMiniRects);
       this.mapper3d.decreaseZoomFactor(this.zoomFactor - 1);
       this.miniRectsCanvas?.draw(this.mapper3d.computeScene());
@@ -671,6 +622,8 @@ export class RectsComponent implements OnInit, OnDestroy {
         this.miniRectsCanvasElement.style.width = '25%';
         this.miniRectsCanvasElement.style.height = '25%';
       }
+
+      this.mapper3d.setCurrentGroupId(largeRectGroupId);
     }
   }
 

@@ -24,7 +24,6 @@ import {
   SimpleChanges,
   ViewChild,
 } from '@angular/core';
-import {Color} from 'app/colors';
 import {TimelineData} from 'app/timeline_data';
 import {assertDefined} from 'common/assert_utils';
 import {PersistentStore} from 'common/persistent_store';
@@ -37,26 +36,34 @@ import {TraceType, TraceTypeUtils} from 'trace/trace_type';
 import {MiniTimelineDrawer} from './drawer/mini_timeline_drawer';
 import {MiniTimelineDrawerImpl} from './drawer/mini_timeline_drawer_impl';
 import {MiniTimelineDrawerInput} from './drawer/mini_timeline_drawer_input';
+import {MIN_SLIDER_WIDTH} from './slider_component';
 import {Transformer} from './transformer';
 
 @Component({
   selector: 'mini-timeline',
   template: `
-    <div id="mini-timeline-wrapper" #miniTimelineWrapper>
-      <canvas #canvas id="mini-timeline-canvas"></canvas>
-      <div class="zoom-control-wrapper">
+    <div class="mini-timeline-outer-wrapper">
+      <div class="zoom-buttons">
+        <button mat-icon-button id="zoom-in-btn" (click)="zoomIn()">
+          <mat-icon>zoom_in</mat-icon>
+        </button>
+        <button mat-icon-button id="zoom-out-btn" (click)="zoomOut()">
+          <mat-icon>zoom_out</mat-icon>
+        </button>
+        <button mat-icon-button id="reset-zoom-btn" (click)="resetZoom()">
+          <mat-icon>refresh</mat-icon>
+        </button>
+      </div>
+      <div id="mini-timeline-wrapper" #miniTimelineWrapper>
+        <canvas
+          #canvas
+          id="mini-timeline-canvas"
+          (mousemove)="trackMousePos($event)"
+          (contextmenu)="recordClickPosition($event)"
+          [cdkContextMenuTriggerFor]="timeline_context_menu"
+          #menuTrigger = "cdkContextMenuTriggerFor"
+          ></canvas>
         <div class="zoom-control">
-          <div class="zoom-buttons" [style.background-color]="getZoomButtonsBackgroundColor()">
-            <button mat-icon-button id="reset-zoom-btn" (click)="resetZoom()">
-              <mat-icon>refresh</mat-icon>
-            </button>
-            <button mat-icon-button id="zoom-in-btn" (click)="zoomIn()">
-              <mat-icon>zoom_in</mat-icon>
-            </button>
-            <button mat-icon-button id="zoom-out-btn" (click)="zoomOut()">
-              <mat-icon>zoom_out</mat-icon>
-            </button>
-          </div>
           <slider
             [fullRange]="timelineData.getFullTimeRange()"
             [zoomRange]="timelineData.getZoomRange()"
@@ -66,37 +73,46 @@ import {Transformer} from './transformer';
         </div>
       </div>
     </div>
+
+    <ng-template #timeline_context_menu>
+      <div class="context-menu" cdkMenu #timelineMenu="cdkMenu">
+        <div class="context-menu-item-container">
+          <span class="context-menu-item" (click)="toggleBookmark()" cdkMenuItem> {{getToggleBookmarkText()}} </span>
+          <span class="context-menu-item" (click)="removeAllBookmarks()" cdkMenuItem>Remove all bookmarks</span>
+        </div>
+      </div>
+    </ng-template>
   `,
   styles: [
     `
+      .mini-timeline-outer-wrapper {
+        display: inline-flex;
+        width: 100%;
+        min-height: 5em;
+        height: 100%;
+      }
+      .zoom-buttons {
+        width: fit-content;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background-color: var(--drawer-color);
+      }
+      .zoom-buttons button {
+        width: fit-content;
+      }
       #mini-timeline-wrapper {
         width: 100%;
         min-height: 5em;
         height: 100%;
       }
-      .zoom-control-wrapper {
-        margin-top: -25px;
-        margin-left: -80px;
-        padding-right: 30px;
-      }
       .zoom-control {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        justify-items: center;
-        gap: 23px;
+        padding-right: ${MIN_SLIDER_WIDTH / 2}px;
+        margin-top: -10px;
       }
       .zoom-control slider {
         flex-grow: 1;
-      }
-      .zoom-buttons {
-        z-index: 20;
-        position: relative;
-        left: 120px;
-        display: flex;
-      }
-      .zoom-buttons .mat-icon-button {
-        width: 28px;
       }
     `,
   ],
@@ -107,12 +123,19 @@ export class MiniTimelineComponent {
   @Input() selectedTraces: TraceType[] | undefined;
   @Input() initialZoom: TimeRange | undefined;
   @Input() expandedTimelineScrollEvent: WheelEvent | undefined;
+  @Input() bookmarks: Timestamp[] = [];
   @Input() store: PersistentStore | undefined;
 
   @Output() readonly onTracePositionUpdate = new EventEmitter<TracePosition>();
   @Output() readonly onSeekTimestampUpdate = new EventEmitter<
     Timestamp | undefined
   >();
+  @Output() readonly onRemoveAllBookmarks = new EventEmitter<void>();
+  @Output() readonly onToggleBookmark = new EventEmitter<{
+    range: TimeRange;
+    rangeContainsBookmark: boolean;
+  }>();
+  @Output() readonly onTraceClicked = new EventEmitter<TraceType>();
 
   @ViewChild('miniTimelineWrapper', {static: false})
   miniTimelineWrapper: ElementRef | undefined;
@@ -123,7 +146,31 @@ export class MiniTimelineComponent {
   }
 
   drawer: MiniTimelineDrawer | undefined = undefined;
+  private lastMousePosX: number | undefined;
   private lastMoves: WheelEvent[] = [];
+  private lastRightClickTimeRange: TimeRange | undefined;
+
+  recordClickPosition(event: MouseEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    const lastRightClickPos = {x: event.offsetX, y: event.offsetY};
+    const drawer = assertDefined(this.drawer);
+    const clickRange = drawer.getClickRange(lastRightClickPos);
+    const zoomRange = assertDefined(this.timelineData).getZoomRange();
+    const usableRange = drawer.getUsableRange();
+    const transformer = new Transformer(
+      zoomRange,
+      usableRange,
+      assertDefined(this.timelineData?.getTimestampConverter()),
+    );
+    this.lastRightClickTimeRange = new TimeRange(
+      transformer.untransform(clickRange.from),
+      transformer.untransform(clickRange.to),
+    );
+  }
+
+  private static readonly SLIDER_HORIZONTAL_STEP = 30;
+  private static readonly SENSITIVITY_FACTOR = 5;
 
   ngAfterViewInit(): void {
     this.makeHiPPICanvas();
@@ -135,12 +182,19 @@ export class MiniTimelineComponent {
       );
     };
 
+    const onClickCallback = (timestamp: Timestamp, trace?: TraceType) => {
+      if (trace !== undefined) {
+        this.onTraceClicked.emit(trace);
+      }
+      updateTimestampCallback(timestamp);
+    };
+
     this.drawer = new MiniTimelineDrawerImpl(
       this.getCanvas(),
       () => this.getMiniCanvasDrawerInput(),
       (position) => this.onSeekTimestampUpdate.emit(position),
       updateTimestampCallback,
-      updateTimestampCallback,
+      onClickCallback,
     );
 
     if (this.initialZoom !== undefined) {
@@ -167,12 +221,6 @@ export class MiniTimelineComponent {
     }
   }
 
-  getZoomButtonsBackgroundColor(): string {
-    return this.store?.get('dark-mode') === 'true'
-      ? Color.APP_BACKGROUND_DARK_MODE
-      : Color.APP_BACKGROUND_LIGHT_MODE;
-  }
-
   getTracesToShow(): Traces {
     const traces = new Traces();
     const timelineData = assertDefined(this.timelineData);
@@ -194,6 +242,37 @@ export class MiniTimelineComponent {
     this.drawer?.draw();
   }
 
+  trackMousePos(event: MouseEvent) {
+    this.lastMousePosX = event.offsetX;
+  }
+
+  @HostListener('document:keydown', ['$event'])
+  async handleKeyboardEvent(event: KeyboardEvent) {
+    if (event.code === 'KeyA') {
+      this.updateSliderPosition(-MiniTimelineComponent.SLIDER_HORIZONTAL_STEP);
+    }
+    if (event.code === 'KeyD') {
+      this.updateSliderPosition(MiniTimelineComponent.SLIDER_HORIZONTAL_STEP);
+    }
+
+    if (event.code !== 'KeyW' && event.code !== 'KeyS') {
+      return;
+    }
+
+    const timelineData = assertDefined(this.timelineData);
+    const zoomRange = timelineData.getZoomRange();
+
+    let zoomTo = this.currentTracePosition?.timestamp;
+    if (this.lastMousePosX !== undefined) {
+      zoomTo = new Transformer(
+        zoomRange,
+        assertDefined(this.drawer).getUsableRange(),
+        assertDefined(timelineData.getTimestampConverter()),
+      ).untransform(this.lastMousePosX);
+    }
+    event.code === 'KeyW' ? this.zoomIn(zoomTo) : this.zoomOut(zoomTo);
+  }
+
   onZoomChanged(zoom: TimeRange) {
     const timelineData = assertDefined(this.timelineData);
     timelineData.setZoom(zoom);
@@ -202,18 +281,18 @@ export class MiniTimelineComponent {
   }
 
   resetZoom() {
-    Analytics.Navigation.logZoom('reset');
+    Analytics.Navigation.logZoom('reset', 'timeline');
     this.onZoomChanged(assertDefined(this.timelineData).getFullTimeRange());
   }
 
   zoomIn(zoomOn?: Timestamp) {
-    Analytics.Navigation.logZoom(this.getZoomSource(zoomOn), 'in');
-    this.zoom({nominator: 3n, denominator: 4n}, zoomOn);
+    Analytics.Navigation.logZoom(this.getZoomSource(zoomOn), 'timeline', 'in');
+    this.zoom({nominator: 6n, denominator: 7n}, zoomOn);
   }
 
   zoomOut(zoomOn?: Timestamp) {
-    Analytics.Navigation.logZoom(this.getZoomSource(zoomOn), 'out');
-    this.zoom({nominator: 5n, denominator: 4n}, zoomOn);
+    Analytics.Navigation.logZoom(this.getZoomSource(zoomOn), 'timeline', 'out');
+    this.zoom({nominator: 8n, denominator: 7n}, zoomOn);
   }
 
   zoom(
@@ -292,10 +371,7 @@ export class MiniTimelineComponent {
       newTo = fullRange.to;
     }
 
-    this.onZoomChanged({
-      from: newFrom,
-      to: newTo,
-    });
+    this.onZoomChanged(new TimeRange(newFrom, newTo));
   }
 
   @HostListener('wheel', ['$event'])
@@ -303,7 +379,7 @@ export class MiniTimelineComponent {
     const moveDirection = this.getMoveDirection(event);
 
     if (
-      (event.target as any)?.id === 'mini-timeline-canvas' &&
+      (event.target as HTMLElement)?.id === 'mini-timeline-canvas' &&
       event.deltaY !== 0 &&
       moveDirection === 'y'
     ) {
@@ -313,6 +389,41 @@ export class MiniTimelineComponent {
     if (event.deltaX !== 0 && moveDirection === 'x') {
       this.updateHorizontalScroll(event);
     }
+  }
+
+  toggleBookmark() {
+    if (!this.lastRightClickTimeRange) {
+      return;
+    }
+    this.onToggleBookmark.emit({
+      range: this.lastRightClickTimeRange,
+      rangeContainsBookmark: this.bookmarks.some((bookmark) => {
+        return assertDefined(this.lastRightClickTimeRange).containsTimestamp(
+          bookmark,
+        );
+      }),
+    });
+  }
+
+  getToggleBookmarkText() {
+    if (!this.lastRightClickTimeRange) {
+      return 'Add/remove bookmark';
+    }
+
+    const rangeContainsBookmark = this.bookmarks.some((bookmark) => {
+      return assertDefined(this.lastRightClickTimeRange).containsTimestamp(
+        bookmark,
+      );
+    });
+    if (rangeContainsBookmark) {
+      return 'Remove bookmark';
+    }
+
+    return 'Add bookmark';
+  }
+
+  removeAllBookmarks() {
+    this.onRemoveAllBookmarks.emit();
   }
 
   private getZoomSource(zoomOn?: Timestamp): 'scroll' | 'button' {
@@ -332,6 +443,8 @@ export class MiniTimelineComponent {
       timelineData.getZoomRange(),
       this.getTracesToShow(),
       timelineData,
+      this.bookmarks,
+      this.store?.get('dark-mode') === 'true',
     );
   }
 
@@ -403,7 +516,12 @@ export class MiniTimelineComponent {
   }
 
   private updateHorizontalScroll(event: WheelEvent) {
-    const scrollAmount = event.deltaX;
+    const scrollAmount =
+      event.deltaX / MiniTimelineComponent.SENSITIVITY_FACTOR;
+    this.updateSliderPosition(scrollAmount);
+  }
+
+  private updateSliderPosition(step: number) {
     const timelineData = assertDefined(this.timelineData);
     const fullRange = timelineData.getFullTimeRange();
     const zoomRange = timelineData.getZoomRange();
@@ -415,8 +533,9 @@ export class MiniTimelineComponent {
       assertDefined(timelineData.getTimestampConverter()),
     );
     const shiftAmount = transformer
-      .untransform(usableRange.from + scrollAmount)
+      .untransform(usableRange.from + step)
       .minus(zoomRange.from.getValueNs());
+
     let newFrom = zoomRange.from.add(shiftAmount.getValueNs());
     let newTo = zoomRange.to.add(shiftAmount.getValueNs());
 
@@ -434,9 +553,6 @@ export class MiniTimelineComponent {
       newTo = fullRange.to;
     }
 
-    this.onZoomChanged({
-      from: newFrom,
-      to: newTo,
-    });
+    this.onZoomChanged(new TimeRange(newFrom, newTo));
   }
 }
