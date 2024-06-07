@@ -67,6 +67,9 @@ async function build() {
         // ViewCapture
         buildProtos([
             '../../../../frameworks/libs/systemui/viewcapturelib/src/com/android/app/viewcapture/proto/view_capture.proto'
+        ], 'viewcapture/udc'),
+        buildProtos([
+            'viewcapture/latest/wrapper.proto',
         ], 'viewcapture/latest'),
 
         // WindowManager
@@ -114,6 +117,7 @@ async function buildProtos(protoPaths, outSubdir) {
         'pbjs',
         '--force-long',
         '--target static-module',
+        `--root ${outSubdir.replace('/', '')}`,
         `--out ${outDir}/static.js`,
         `--path ${PERFETTO_TOP}`,
         `--path ${WINSCOPE_TOP}`,

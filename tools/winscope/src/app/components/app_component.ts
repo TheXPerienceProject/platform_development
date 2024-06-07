@@ -51,7 +51,6 @@ import {
   WinscopeEventType,
 } from 'messaging/winscope_event';
 import {WinscopeEventListener} from 'messaging/winscope_event_listener';
-import {TraceType} from 'trace/trace_type';
 import {proxyClient, ProxyState} from 'trace_collection/proxy_client';
 import {
   TraceConfigurationMap,
@@ -82,6 +81,15 @@ import {UploadTracesComponent} from './upload_traces_component';
 
       <div class="horizontal-align vertical-align">
         <div *ngIf="showDataLoadedElements" class="file-descriptor vertical-align">
+          <button
+            mat-icon-button
+            *ngIf="showCrossToolSyncButton()"
+            [matTooltip]="getCrossToolSyncTooltip()"
+            class="cross-tool-sync-button"
+            (click)="onCrossToolSyncButtonClick()"
+            [color]="getCrossToolSyncButtonColor()">
+            <mat-icon class="material-symbols-outlined">cloud_sync</mat-icon>
+          </button>
           <span *ngIf="!isEditingFilename" class="download-file-info mat-body-2">
             {{ filenameFormControl.value }}
           </span>
@@ -135,7 +143,6 @@ import {UploadTracesComponent} from './upload_traces_component';
         </button>
         <button
           *ngIf="showDataLoadedElements"
-          color="primary"
           mat-icon-button
           matTooltip="Upload or collect new trace"
           class="upload-new"
@@ -186,7 +193,6 @@ import {UploadTracesComponent} from './upload_traces_component';
         <timeline
           *ngIf="dataLoaded"
           [timelineData]="timelineData"
-          [availableTraces]="getLoadedTraceTypes()"
           [store]="store"
           (collapsedTimelineSizeChanged)="onCollapsedTimelineSizeChanged($event)"></timeline>
       </mat-drawer>
@@ -474,10 +480,6 @@ export class AppComponent implements WinscopeEventListener {
     this.changeDetectorRef.detectChanges();
   }
 
-  getLoadedTraceTypes(): TraceType[] {
-    return this.tracePipeline.getTraces().mapTrace((trace) => trace.type);
-  }
-
   getLogoUrl(): string {
     const logoPath = this.isDarkModeOn
       ? 'logo_dark_mode.svg'
@@ -600,7 +602,38 @@ export class AppComponent implements WinscopeEventListener {
     return !this.timelineData.hasMoreThanOneDistinctTimestamp();
   }
 
+  showCrossToolSyncButton() {
+    return this.crossToolProtocol.isConnected();
+  }
+
+  getCrossToolSyncTooltip() {
+    const currStatus = this.crossToolProtocol.getAllowTimestampSync();
+
+    return `Cross Tool Sync ${this.translateStatus(
+      currStatus,
+    )} (Click to turn ${this.translateStatus(!currStatus)})`;
+  }
+
+  onCrossToolSyncButtonClick() {
+    this.crossToolProtocol.setAllowTimestampSync(
+      !this.crossToolProtocol.getAllowTimestampSync(),
+    );
+    Analytics.Settings.logCrossToolSync(
+      this.crossToolProtocol.getAllowTimestampSync(),
+    );
+  }
+
+  getCrossToolSyncButtonColor() {
+    return this.crossToolProtocol.getAllowTimestampSync()
+      ? 'primary'
+      : 'accent';
+  }
+
   private goToLink(url: string) {
     window.open(url, '_blank');
+  }
+
+  private translateStatus(status: boolean) {
+    return status ? 'ON' : 'OFF';
   }
 }
