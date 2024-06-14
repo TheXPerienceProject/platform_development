@@ -25,6 +25,7 @@ import {
 } from '@angular/core';
 import {createCustomElement} from '@angular/elements';
 import {FormControl, Validators} from '@angular/forms';
+import {MatDialog} from '@angular/material/dialog';
 import {Title} from '@angular/platform-browser';
 import {AbtChromeExtensionProtocol} from 'abt_chrome_extension/abt_chrome_extension_protocol';
 import {Mediator} from 'app/mediator';
@@ -56,6 +57,7 @@ import {
   TraceConfigurationMap,
   TRACES,
 } from 'trace_collection/trace_collection_utils';
+import {iconDividerStyle} from 'viewers/components/styles/icon_divider.styles';
 import {ViewerInputMethodComponent} from 'viewers/components/viewer_input_method_component';
 import {Viewer} from 'viewers/viewer';
 import {ViewerProtologComponent} from 'viewers/viewer_protolog/viewer_protolog_component';
@@ -66,6 +68,7 @@ import {ViewerTransitionsComponent} from 'viewers/viewer_transitions/viewer_tran
 import {ViewerViewCaptureComponent} from 'viewers/viewer_view_capture/viewer_view_capture_component';
 import {ViewerWindowManagerComponent} from 'viewers/viewer_window_manager/viewer_window_manager_component';
 import {CollectTracesComponent} from './collect_traces_component';
+import {ShortcutsComponent} from './shortcuts_component';
 import {SnackBarOpener} from './snack_bar_opener';
 import {TimelineComponent} from './timeline/timeline_component';
 import {TraceViewComponent} from './trace_view_component';
@@ -73,6 +76,7 @@ import {UploadTracesComponent} from './upload_traces_component';
 
 @Component({
   selector: 'app-root',
+  encapsulation: ViewEncapsulation.None,
   template: `
     <mat-toolbar class="toolbar">
       <div class="horizontal-align vertical-align">
@@ -131,7 +135,7 @@ import {UploadTracesComponent} from './upload_traces_component';
           </button>
         </div>
 
-        <div *ngIf="showDataLoadedElements" class="icon-divider"></div>
+        <div *ngIf="showDataLoadedElements" class="icon-divider toolbar-icon-divider"></div>
         <button
           *ngIf="showDataLoadedElements && dumpsUploaded()"
           color="primary"
@@ -148,6 +152,14 @@ import {UploadTracesComponent} from './upload_traces_component';
           class="upload-new"
           (click)="onUploadNewButtonClick()">
           <mat-icon class="material-symbols-outlined">upload</mat-icon>
+        </button>
+
+        <button
+          mat-icon-button
+          matTooltip="Shortcuts"
+          class="shortcuts"
+          (click)="openShortcutsPanel()">
+          <mat-icon>keyboard_command_key</mat-icon>
         </button>
 
         <button
@@ -277,9 +289,7 @@ import {UploadTracesComponent} from './upload_traces_component';
         padding-bottom: 10px;
         width: 600px;
       }
-      .icon-divider {
-        width: 1px;
-        background-color: #C4C0C0;
+      .toolbar-icon-divider {
         margin-right: 6px;
         margin-left: 6px;
         height: 20px;
@@ -309,8 +319,8 @@ import {UploadTracesComponent} from './upload_traces_component';
         margin: auto;
       }
     `,
+    iconDividerStyle,
   ],
-  encapsulation: ViewEncapsulation.None,
 })
 export class AppComponent implements WinscopeEventListener {
   title = 'winscope';
@@ -355,6 +365,7 @@ export class AppComponent implements WinscopeEventListener {
     @Inject(SnackBarOpener) snackBar: SnackBarOpener,
     @Inject(Title) private pageTitle: Title,
     @Inject(NgZone) private ngZone: NgZone,
+    @Inject(MatDialog) private dialog: MatDialog,
   ) {
     this.changeDetectorRef = changeDetectorRef;
     this.snackbarOpener = snackBar;
@@ -576,6 +587,13 @@ export class AppComponent implements WinscopeEventListener {
       this.showDataLoadedElements = false;
       this.pageTitle.setTitle('Winscope');
       this.changeDetectorRef.detectChanges();
+    });
+  }
+
+  openShortcutsPanel() {
+    this.dialog.open(ShortcutsComponent, {
+      height: 'fit-content',
+      maxWidth: '860px',
     });
   }
 

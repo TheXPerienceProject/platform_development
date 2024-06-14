@@ -66,6 +66,17 @@ import {MiniTimelineComponent} from './mini-timeline/mini_timeline_component';
   selector: 'timeline',
   encapsulation: ViewEncapsulation.None,
   template: `
+    <div id="toggle" *ngIf="timelineData.hasMoreThanOneDistinctTimestamp()">
+      <button
+        mat-icon-button
+        [class]="TOGGLE_BUTTON_CLASS"
+        color="basic"
+        aria-label="Toggle Expanded Timeline"
+        (click)="toggleExpand()">
+          <mat-icon *ngIf="!expanded" class="material-symbols-outlined">expand_circle_up</mat-icon>
+          <mat-icon *ngIf="expanded" class="material-symbols-outlined">expand_circle_down</mat-icon>
+        </button>
+    </div>
     <div id="expanded-nav" *ngIf="expanded">
       <div id="video-content" *ngIf="videoUrl !== undefined">
         <video
@@ -87,17 +98,6 @@ import {MiniTimelineComponent} from './mini-timeline/mini_timeline_component';
         id="expanded-timeline"></expanded-timeline>
     </div>
     <div class="navbar-toggle">
-    <div id="toggle" *ngIf="timelineData.hasMoreThanOneDistinctTimestamp()">
-      <button
-        mat-icon-button
-        [class]="TOGGLE_BUTTON_CLASS"
-        color="basic"
-        aria-label="Toggle Expanded Timeline"
-        (click)="toggleExpand()">
-          <mat-icon *ngIf="!expanded" class="material-symbols-outlined">expand_circle_up</mat-icon>
-          <mat-icon *ngIf="expanded" class="material-symbols-outlined">expand_circle_down</mat-icon>
-        </button>
-    </div>
       <div class="navbar" #collapsedTimeline>
         <ng-template [ngIf]="timelineData.hasMoreThanOneDistinctTimestamp()">
           <div id="time-selector">
@@ -270,6 +270,7 @@ import {MiniTimelineComponent} from './mini-timeline/mini_timeline_component';
         width: fit-content;
         position: absolute;
         top: -41px;
+        right: 0px;
         z-index: 1000;
         border: 1px solid #3333;
         border-bottom: 0px;
@@ -287,7 +288,9 @@ import {MiniTimelineComponent} from './mini-timeline/mini_timeline_component';
       }
       #expanded-nav {
         display: flex;
+        flex-direction: row;
         border-bottom: 1px solid #3333;
+        border-top: 1px solid #3333;
       }
       #time-selector {
         display: flex;
@@ -391,10 +394,6 @@ import {MiniTimelineComponent} from './mini-timeline/mini_timeline_component';
         height: 100%;
         width: 100%;
       }
-      #expanded-nav {
-        display: flex;
-        flex-direction: row;
-      }
       #expanded-timeline {
         flex-grow: 1;
       }
@@ -469,20 +468,6 @@ export class TimelineComponent
   readonly TOGGLE_BUTTON_CLASS: string = 'button-toggle-expansion';
   readonly MAX_SELECTED_TRACES = 3;
 
-  @Input() set activeTrace(trace: Trace<object> | undefined) {
-    if (!trace) {
-      return;
-    }
-
-    this.internalActiveTrace = trace;
-
-    if (!this.selectedTraces.includes(this.internalActiveTrace)) {
-      // Create new object to make sure we trigger an update on Mini Timeline child component
-      this.selectedTraces = [...this.selectedTraces, this.internalActiveTrace];
-      this.selectedTracesFormControl.setValue(this.selectedTraces);
-    }
-  }
-
   @Input() timelineData: TimelineData | undefined;
   @Input() store: PersistentStore | undefined;
 
@@ -492,13 +477,10 @@ export class TimelineComponent
     | ElementRef
     | undefined;
 
-  @ViewChild('miniTimeline') private miniTimeline:
-    | MiniTimelineComponent
-    | undefined;
+  @ViewChild('miniTimeline') miniTimeline: MiniTimelineComponent | undefined;
 
   videoUrl: SafeUrl | undefined;
 
-  internalActiveTrace: Trace<object> | undefined = undefined;
   initialZoom: TimeRange | undefined = undefined;
   selectedTraces: Array<Trace<object>> = [];
   sortedAvailableTraces: Array<Trace<object>> = [];
@@ -626,11 +608,11 @@ export class TimelineComponent
     });
     await event.visit(WinscopeEventType.ACTIVE_TRACE_CHANGED, async (event) => {
       await this.miniTimeline?.drawer?.draw();
-      this.activeTrace = event.trace;
+      this.updateSelectedTraces(event.trace);
     });
     await event.visit(WinscopeEventType.DARK_MODE_TOGGLED, async (event) => {
-      const activeTraceType = this.timelineData?.getActiveViewTrace();
-      if (activeTraceType === undefined) {
+      const activeTrace = this.timelineData?.getActiveTrace();
+      if (activeTrace === undefined) {
         return;
       }
       await this.miniTimeline?.drawer?.draw();
@@ -663,7 +645,7 @@ export class TimelineComponent
   }
 
   isOptionDisabled(trace: Trace<object>) {
-    return this.internalActiveTrace === trace;
+    return this.timelineData?.getActiveTrace() === trace;
   }
 
   applyNewTraceSelection(clickedTrace: Trace<object>) {
@@ -710,43 +692,45 @@ export class TimelineComponent
   }
 
   hasPrevEntry(): boolean {
-    if (!this.internalActiveTrace) {
+    const activeTrace = this.timelineData?.getActiveTrace();
+    if (!activeTrace) {
       return false;
     }
     return (
-      assertDefined(this.timelineData).getPreviousEntryFor(
-        this.internalActiveTrace,
-      ) !== undefined
+      assertDefined(this.timelineData).getPreviousEntryFor(activeTrace) !==
+      undefined
     );
   }
 
   hasNextEntry(): boolean {
-    if (!this.internalActiveTrace) {
+    const activeTrace = this.timelineData?.getActiveTrace();
+    if (!activeTrace) {
       return false;
     }
     return (
-      assertDefined(this.timelineData).getNextEntryFor(
-        this.internalActiveTrace,
-      ) !== undefined
+      assertDefined(this.timelineData).getNextEntryFor(activeTrace) !==
+      undefined
     );
   }
 
   async moveToPreviousEntry() {
-    if (!this.internalActiveTrace) {
+    const activeTrace = this.timelineData?.getActiveTrace();
+    if (!activeTrace) {
       return;
     }
     const timelineData = assertDefined(this.timelineData);
-    timelineData.moveToPreviousEntryFor(this.internalActiveTrace);
+    timelineData.moveToPreviousEntryFor(activeTrace);
     const position = assertDefined(timelineData.getCurrentPosition());
     await this.emitEvent(new TracePositionUpdate(position));
   }
 
   async moveToNextEntry() {
-    if (this.internalActiveTrace === undefined) {
+    const activeTrace = this.timelineData?.getActiveTrace();
+    if (!activeTrace) {
       return;
     }
     const timelineData = assertDefined(this.timelineData);
-    timelineData.moveToNextEntryFor(this.internalActiveTrace);
+    timelineData.moveToNextEntryFor(activeTrace);
     const position = assertDefined(timelineData.getCurrentPosition());
     await this.emitEvent(new TracePositionUpdate(position));
   }
@@ -897,6 +881,18 @@ export class TimelineComponent
   async onTimelineTraceClicked(trace: Trace<object>) {
     await this.emitEvent(new ActiveTraceChanged(trace));
     this.changeDetectorRef.detectChanges();
+  }
+
+  private updateSelectedTraces(trace: Trace<object> | undefined) {
+    if (!trace) {
+      return;
+    }
+
+    if (!this.selectedTraces.includes(trace)) {
+      // Create new object to make sure we trigger an update on Mini Timeline child component
+      this.selectedTraces = [...this.selectedTraces, trace];
+      this.selectedTracesFormControl.setValue(this.selectedTraces);
+    }
   }
 
   private updateTimeInputValuesToCurrentTimestamp() {
