@@ -18,7 +18,6 @@ import {assertDefined} from 'common/assert_utils';
 import {Transform} from 'parsers/surface_flinger/transform_utils';
 import {HierarchyTreeBuilder} from 'test/unit/hierarchy_tree_builder';
 import {TraceRectBuilder} from 'trace/trace_rect_builder';
-import {TraceType} from 'trace/trace_type';
 import {HierarchyTreeNode} from 'trace/tree_node/hierarchy_tree_node';
 import {UiRect} from 'viewers/components/rects/types2d';
 import {UiRectBuilder} from 'viewers/components/rects/ui_rect_builder';
@@ -62,6 +61,7 @@ describe('UI_RECT_FACTORY', () => {
       .setIsVirtual(false)
       .setHasContent(false)
       .setDepth(0)
+      .setOpacity(0.5)
       .build();
 
     const expectedUiRect2 = new UiRectBuilder()
@@ -80,6 +80,7 @@ describe('UI_RECT_FACTORY', () => {
       .setIsVirtual(false)
       .setHasContent(false)
       .setDepth(1)
+      .setOpacity(0.5)
       .build();
 
     const expectedRects: UiRect[] = [expectedUiRect1, expectedUiRect2];
@@ -107,6 +108,7 @@ describe('UI_RECT_FACTORY', () => {
       .setIsVirtual(false)
       .setHasContent(false)
       .setDepth(1)
+      .setOpacity(0.5)
       .build();
 
     const expectedUiRect2 = new UiRectBuilder()
@@ -125,13 +127,16 @@ describe('UI_RECT_FACTORY', () => {
       .setIsVirtual(false)
       .setHasContent(false)
       .setDepth(0)
+      .setOpacity(0.5)
       .build();
 
     const expectedRects: UiRect[] = [expectedUiRect1, expectedUiRect2];
     expect(UI_RECT_FACTORY.makeUiRects(hierarchyRoot)).toEqual(expectedRects);
   });
 
-  it('makes vc rects with trace type as groupId, content and empty label', () => {
+  it('makes vc rects with groupId, content and empty label', () => {
+    const GROUP_ID = 11;
+
     buildRectAndSetToNode(node1, 1);
     buildRectAndSetToNode(node2, 0);
 
@@ -143,7 +148,7 @@ describe('UI_RECT_FACTORY', () => {
       .setId('1 node1')
       .setLabel('')
       .setCornerRadius(0)
-      .setGroupId(TraceType.VIEW_CAPTURE_LAUNCHER_ACTIVITY)
+      .setGroupId(GROUP_ID)
       .setTransform(Transform.EMPTY.matrix)
       .setIsVisible(true)
       .setIsDisplay(false)
@@ -151,6 +156,7 @@ describe('UI_RECT_FACTORY', () => {
       .setIsVirtual(false)
       .setHasContent(true)
       .setDepth(1)
+      .setOpacity(0.5)
       .build();
 
     const expectedVcUiRect2 = new UiRectBuilder()
@@ -161,7 +167,7 @@ describe('UI_RECT_FACTORY', () => {
       .setId('2 node2')
       .setLabel('')
       .setCornerRadius(0)
-      .setGroupId(TraceType.VIEW_CAPTURE_LAUNCHER_ACTIVITY)
+      .setGroupId(GROUP_ID)
       .setTransform(Transform.EMPTY.matrix)
       .setIsVisible(true)
       .setIsDisplay(false)
@@ -169,23 +175,35 @@ describe('UI_RECT_FACTORY', () => {
       .setIsVirtual(false)
       .setHasContent(true)
       .setDepth(0)
+      .setOpacity(0.5)
       .build();
 
     const expectedRects: UiRect[] = [expectedVcUiRect1, expectedVcUiRect2];
-    expect(
-      UI_RECT_FACTORY.makeVcUiRects(
-        hierarchyRoot,
-        TraceType.VIEW_CAPTURE_LAUNCHER_ACTIVITY,
-      ),
-    ).toEqual(expectedRects);
+    expect(UI_RECT_FACTORY.makeVcUiRects(hierarchyRoot, GROUP_ID)).toEqual(
+      expectedRects,
+    );
   });
 
-  function buildRectAndSetToNode(node: HierarchyTreeNode, depth: number) {
+  it('discards vc trace rects with zero height or width', () => {
+    const GROUP_ID = 11;
+
+    buildRectAndSetToNode(node1, 1, 0, 1);
+    buildRectAndSetToNode(node2, 0, 1, 0);
+
+    expect(UI_RECT_FACTORY.makeVcUiRects(hierarchyRoot, GROUP_ID)).toEqual([]);
+  });
+
+  function buildRectAndSetToNode(
+    node: HierarchyTreeNode,
+    depth: number,
+    width = 1,
+    height = 1,
+  ) {
     const rect = new TraceRectBuilder()
       .setX(0)
       .setY(0)
-      .setWidth(1)
-      .setHeight(1)
+      .setWidth(width)
+      .setHeight(height)
       .setId(node.id)
       .setName(node.name)
       .setCornerRadius(0)
@@ -195,6 +213,7 @@ describe('UI_RECT_FACTORY', () => {
       .setIsVisible(true)
       .setIsDisplay(false)
       .setIsVirtual(false)
+      .setOpacity(0.5)
       .build();
 
     node.setRects([rect]);

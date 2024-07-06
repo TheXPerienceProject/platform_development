@@ -166,7 +166,7 @@ export class VisibilityPropertiesComputation implements Computation {
         ),
       );
 
-      this.getDefinedValue(layer, 'isOpaque')
+      this.isOpaque(layer)
         ? opaqueLayers.push(layer)
         : transparentLayers.push(layer);
     }
@@ -389,7 +389,7 @@ export class VisibilityPropertiesComputation implements Computation {
   }
 
   private isHiddenByParent(layer: HierarchyTreeNode): boolean {
-    const parentLayer = assertDefined(layer.getZParent());
+    const parentLayer = assertDefined(layer.getParent());
     return (
       !parentLayer.isRoot() &&
       (this.isHiddenByPolicy(parentLayer) || this.isHiddenByParent(parentLayer))
@@ -407,6 +407,14 @@ export class VisibilityPropertiesComputation implements Computation {
   private hasZeroAlpha(layer: HierarchyTreeNode): boolean {
     const alpha = this.getColor(layer)?.getChildByName('a')?.getValue() ?? 0;
     return alpha === 0;
+  }
+
+  private isOpaque(layer: HierarchyTreeNode): boolean {
+    const alpha = this.getColor(layer)?.getChildByName('a')?.getValue();
+    if (alpha !== 1) {
+      return false;
+    }
+    return this.getDefinedValue(layer, 'isOpaque');
   }
 
   private isActiveBufferEmpty(buffer: PropertyTreeNode | undefined): boolean {

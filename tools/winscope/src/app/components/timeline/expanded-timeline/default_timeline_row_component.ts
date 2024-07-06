@@ -25,8 +25,14 @@ import {AbstractTimelineRowComponent} from './abstract_timeline_row_component';
 @Component({
   selector: 'single-timeline',
   template: `
-    <div class="single-timeline" (click)="onTimelineClick($event)" [style.background-color]="getBackgroundColor()" #wrapper>
-      <canvas id="canvas" #canvas></canvas>
+    <div
+      class="single-timeline"
+      (click)="onTimelineClick($event)"
+      [style.background-color]="getBackgroundColor()" #wrapper>
+      <canvas
+        id="canvas"
+        (mousemove)="trackMousePos($event)"
+        (mouseleave)="onMouseLeave($event)" #canvas></canvas>
     </div>
   `,
   styles: [
@@ -79,7 +85,7 @@ export class DefaultTimelineRowComponent extends AbstractTimelineRowComponent<{}
     assertDefined(this.trace)
       .sliceTime(
         assertDefined(this.selectionRange).from,
-        assertDefined(this.selectionRange).to,
+        assertDefined(this.selectionRange).to.add(1n),
       )
       .forEachTimestamp((entry) => {
         this.drawEntry(entry);

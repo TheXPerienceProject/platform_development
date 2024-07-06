@@ -217,8 +217,8 @@ describe('DefaultTimelineRowComponent', () => {
     );
     const entryPos = Math.floor((canvasWidth * 2) / 5);
 
-    // 5 rect draws - 2 entry rects present + 2 for redraw + 1 for selected entry
-    await drawCorrectEntryOnClick(entryPos, 12n, 5);
+    // 7 rect draws - 3 entry rects present + 3 for redraw + 1 for selected entry
+    await drawCorrectEntryOnClick(entryPos, 12n, 7);
   });
 
   it('can draw correct entry on click when timeline zoomed in near end', async () => {
@@ -246,6 +246,29 @@ describe('DefaultTimelineRowComponent', () => {
     const spy = spyOn(component.onScrollEvent, 'emit');
     component.updateScroll(new WheelEvent('scroll'));
     expect(spy).toHaveBeenCalled();
+  });
+
+  it('tracks mouse position', async () => {
+    setTraceAndSelectionRange(10n, 110n);
+
+    fixture.detectChanges();
+    await fixture.whenRenderingDone();
+
+    const spy = spyOn(component.onMouseXRatioUpdate, 'emit');
+    const canvas = assertDefined(component.canvasRef).nativeElement;
+
+    const mouseMoveEvent = new MouseEvent('mousemove');
+    Object.defineProperty(mouseMoveEvent, 'target', {value: canvas});
+    Object.defineProperty(mouseMoveEvent, 'offsetX', {value: 100});
+    canvas.dispatchEvent(mouseMoveEvent);
+    fixture.detectChanges();
+
+    expect(spy).toHaveBeenCalledWith(100 / canvas.offsetWidth);
+
+    const mouseLeaveEvent = new MouseEvent('mouseleave');
+    canvas.dispatchEvent(mouseLeaveEvent);
+    fixture.detectChanges();
+    expect(spy).toHaveBeenCalledWith(undefined);
   });
 
   function setTraceAndSelectionRange(low: bigint, high: bigint) {

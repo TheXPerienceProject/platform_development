@@ -36,7 +36,10 @@ async function build() {
 
         // ProtoLog
         buildProtos([
-            '../../../../frameworks/base/core/proto/android/internal/protolog.proto'
+            'protolog/udc/protolog.proto'
+        ], 'protolog/udc'),
+        buildProtos([
+            '../../../../external/perfetto/protos/perfetto/trace/android/protolog.proto'
         ], 'protolog/latest'),
 
         // SurfaceFlinger
@@ -67,12 +70,21 @@ async function build() {
         // ViewCapture
         buildProtos([
             '../../../../frameworks/libs/systemui/viewcapturelib/src/com/android/app/viewcapture/proto/view_capture.proto'
+        ], 'viewcapture/udc'),
+        buildProtos([
+            'viewcapture/latest/wrapper.proto',
         ], 'viewcapture/latest'),
 
         // WindowManager
         buildProtos([
             '../../../../frameworks/base/core/proto/android/server/windowmanagertrace.proto',
         ], 'windowmanager/latest'),
+
+        // Input
+        buildProtos([
+            '../../../../external/perfetto/protos/perfetto/trace/android/android_input_event.proto',
+            'input/latest/input_event_wrapper.proto',
+        ], 'input/latest'),
 
         // Test proto fields
         buildProtos([
@@ -114,6 +126,7 @@ async function buildProtos(protoPaths, outSubdir) {
         'pbjs',
         '--force-long',
         '--target static-module',
+        `--root ${outSubdir.replace('/', '')}`,
         `--out ${outDir}/static.js`,
         `--path ${PERFETTO_TOP}`,
         `--path ${WINSCOPE_TOP}`,
